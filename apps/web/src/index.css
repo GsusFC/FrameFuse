@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+
+@layer base {
+  :root {
+    --bg: #000000;
+    --surface: #111315;
+    --panel: #0f1115;
+    --border: #262626;
+    --text: #e6e7eb;
+    --text-muted: #9aa3b2;
+    --primary: #7c3aed;
+    --on-primary: #f8fafc;
+    --accent: #ec4899;
+    --on-accent: #ffffff;
+    --ring: rgba(124,58,237,0.55);
+    --selection: rgba(124,58,237,0.2);
+    --overlay: rgba(2,6,23,0.6);
+    --radius: 8px;
+  }
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-[var(--bg)] text-[var(--text)];
+    font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  h1 { @apply text-lg font-semibold; }
+  h2 { @apply text-base font-semibold; }
+  h3 { @apply text-sm font-semibold; }
+  ::selection {
+    background: var(--selection);
+  }
+
+  /* Minimal, subtle scrollbars across the app */
+  * {
+    scrollbar-width: thin; /* Firefox */
+    scrollbar-color: var(--border) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px; /* vertical */
+    height: 8px; /* horizontal */
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 999px;
+    border: 2px solid transparent; /* makes thumb look thinner */
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-muted);
+  }
+}
+
+

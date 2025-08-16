@@ -1,0 +1,84 @@
+
+
+
+# Objetivo
+Genera la base de una **aplicación web** “Imagen-a-Video” que convierte una serie de imágenes en un vídeo, conservando la resolución original de las imágenes. La app debe incluir un **preview instantáneo**, un **timeline** para organizar las imágenes y la duración de cada clip, y capacidad de **exportar en WebM, GIF y MP4** con control de calidad.
+
+## 1. Principios de diseño
+1. **Arquitectura modular** y domain-driven.
+2. Separar **capa UI**, **capa dominio** (manipulación de vídeo) y **capa infraestructura** (FFmpeg, storage).
+3. Facilitar la inyección de dependencias para poder sustituir módulos (p. ej. FFmpeg WebAssembly ↔ servicio backend en futuras fases).
+4. Todos los módulos deben exponer una API pública mínima; nada de imports relativos profundos.
+5. Añadir **testing de contrato** entre capas para evitar acoplamientos accidentales.
+
+## 2. Tech Stack
+- **Monorepo:** pnpm workspaces + Turborepo (o Nx)  
+  - `packages/core` → lógica de timeline, transiciones, exportador.  
+  - `apps/web` → UI React.  
+- **Frontend:** React 18 + TypeScript + Vite.  
+- **Estado global:** Zustand (slices por dominio).  
+- **Procesado vídeo/GIF:** `@ffmpeg/ffmpeg` en Web Worker dedicado.  
+- **Arrastrar/Soltar timeline:** `dnd-kit` (ligero y composable).  
+- **UI:** shadcn/ui + Tailwind CSS.  
+- **Tests:** Vitest + React Testing Library + contract tests (`@pact-foundation/pact`).
+
+## 3. Estructura de carpetas (monorepo)
+
+.
+├─ packages/
+│   ├─ core/              # dominio: timeline, transiciones, exporter
+│   ├─ ffmpeg-worker/     # worker + bindings, aislado
+│   └─ ui-kit/            # librería de componentes comunes
+└─ apps/
+└─ web/
+├─ features/
+│   ├─ upload/
+│   ├─ timeline/
+│   ├─ preview/
+│   └─ export/
+└─ pages/
+
+## 4. Fase 1 – MVP
+1. **Carga de imágenes** (drag-and-drop) → slice `upload`.
+2. **Timeline**  
+   - Reordenación con `dnd-kit`.  
+   - Campo editable de duración por imagen.  
+3. **Preview** (canvas + `requestAnimationFrame`).  
+4. **Exportación**  
+   - Formatos: WebM, MP4, GIF.  
+   - Selector de calidad (CRF / fps presets).  
+   - Worker asegura UI 100 % fluida.  
+5. **Persistencia local** (IndexedDB) mediante `idb-keyval`.  
+
+## 5. Fase 2 – Transiciones (plugin system)
+- Cada transición = módulo que implementa la interfaz `TransitionPlugin`.  
+- Registro dinámico: `core/transitions/registry.ts`.  
+- UI consume lista de plugins para ofrecerlas al usuario.  
+
+## 6. Escalabilidad & buenas prácticas
+- **Lazy-loading**: importar `ffmpeg` y worker on-demand.  
+- **Code splitting**: Vite dynamic imports por feature.  
+- **Strict ESM** en todos los paquetes.  
+- **CI/CD** con GitHub Actions: lint → test → type-check → build.  
+- Generar **docs automáticas** con `typedoc` y desplegar a GitHub Pages.  
+- **Storybook** aislado en `ui-kit` para poder publicar un package npm si se desea.
+
+## 7. Criterios de aceptación
+- Preview responde en < 200 ms al cambiar la duración u orden.  
+- Exportar proyecto de 10 imágenes 1080p en < 30 s en un portátil M-series.  
+- Core sin depender de React (para reutilizar en CLI o backend).  
+- Cobertura de tests ≥ 80 % en `packages/core`.
+
+## 8. Entregables
+- Monorepo listo con scripts `dev`, `build`, `test`, `lint`.  
+- README con arquitectura, cómo añadir nuevos plugins y tabla de compatibilidad.  
+- Roadmap: soporte backend opcional, render distribuido, edición de audio.
+
+---
+
+> **Indicaciones para Cursor**  
+> 1. Crea el workspace pnpm + Turborepo con las carpetas descritas.  
+> 2. Genera el esqueleto de cada paquete con `tsconfig` aislado.  
+> 3. Implementa los componentes vacíos y un demo e2e mínimo.  
+> 4. No avances a Fase 2 hasta que los TODOs del MVP estén resueltos.
+

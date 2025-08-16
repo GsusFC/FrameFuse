@@ -1,0 +1,55 @@
+{
+  "name": "framefuse-figma-plugin",
+  "version": "2.0.0",
+  "description": "Export Figma frames to FrameFuse for creating animated slideshows",
+  "author": "FrameFuse Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GsusFC/anima.git",
+    "directory": "figma-plugin"
+  },
+  "keywords": [
+    "figma",
+    "plugin",
+    "animation",
+    "slideshow",
+    "export",
+    "framefuse"
+  ],
+  "dependencies": {
+    "@create-figma-plugin/ui": "^4.0.1",
+    "@create-figma-plugin/utilities": "^4.0.1",
+    "fflate": "^0.8.1",
+    "preact": "^10.0.0"
+  },
+  "devDependencies": {
+    "@create-figma-plugin/build": "^4.0.1",
+    "@create-figma-plugin/tsconfig": "^4.0.1",
+    "@figma/plugin-typings": "1.100.2",
+    "typescript": ">=4"
+  },
+  "scripts": {
+    "build": "build-figma-plugin --typecheck --minify",
+    "watch": "build-figma-plugin --typecheck --watch"
+  },
+  "figma-plugin": {
+    "editorType": [
+      "figma"
+    ],
+    "id": "framefuse-exporter",
+    "name": "FrameFuse Exporter",
+    "main": "src/main.ts",
+    "ui": "src/ui.tsx",
+    "networkAccess": {
+      "reasoning": "This plugin connects to the FrameFuse web app to import frames and validates API keys via the FrameFuse API. Localhost is used only during development.",
+      "allowedDomains": [],
+      "devAllowedDomains": [
+        "http://localhost:3000",
+        "http://localhost:5000",
+        "http://localhost:5174",
+        "http://localhost:5175"
+      ]
+    }
+  }
+}

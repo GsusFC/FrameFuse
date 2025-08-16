@@ -1,0 +1,38 @@
+# Node
+node_modules
+*.log
+.DS_Store
+
+# Build outputs
+build
+dist
+apps/**/dist
+packages/**/dist
+
+# Turbo repo
+.turbo
+apps/**/.turbo
+packages/**/.turbo
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Vite
+apps/web/.vite
+
+# Figma plugin generated
+apps/figma-plugin/build/
+apps/figma-plugin/manifest.json
+
+# Coverage
+coverage
+packages/**/coverage
+apps/**/coverage
+
+# Local env files
+.env
+.env.local
+apps/**/.env*
+packages/**/.env*
+
+
