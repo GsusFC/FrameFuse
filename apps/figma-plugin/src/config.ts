@@ -33,7 +33,7 @@ function normalizeOrigin(origin: string): string {
 // - FFZ_WEB_APP_ORIGIN, VITE_WEB_APP_ORIGIN, WEB_APP_ORIGIN
 // - FFZ_API_BASE, VITE_API_BASE, API_BASE
 const ENV_WEB_APP_ORIGIN = getEnv('FFZ_WEB_APP_ORIGIN') || getEnv('VITE_WEB_APP_ORIGIN') || getEnv('WEB_APP_ORIGIN')
-const DEFAULT_WEB_APP_ORIGIN = 'http://localhost:5174'
+const DEFAULT_WEB_APP_ORIGIN = 'https://frame-fuse-web.vercel.app'
 
 export const WEB_APP_ORIGIN = normalizeOrigin(ENV_WEB_APP_ORIGIN || DEFAULT_WEB_APP_ORIGIN)
 

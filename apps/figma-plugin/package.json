@@ -43,7 +43,9 @@
     "ui": "src/ui.tsx",
     "networkAccess": {
       "reasoning": "This plugin connects to the FrameFuse web app to import frames and validates API keys via the FrameFuse API. Localhost is used only during development.",
-      "allowedDomains": [],
+      "allowedDomains": [
+        "https://frame-fuse-web.vercel.app"
+      ],
       "devAllowedDomains": [
         "http://localhost:3000",
         "http://localhost:5000",
