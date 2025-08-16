@@ -5,9 +5,9 @@
     }
   },
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm -w build",
+  "buildCommand": "pnpm -w build && rm -rf dist && mkdir -p dist && cp -R apps/web/dist/* dist/",
   "framework": "vite",
-  "outputDirectory": "apps/web/dist",
+  "outputDirectory": "dist",
   "headers": [
     {
       "source": "/(.*)",
