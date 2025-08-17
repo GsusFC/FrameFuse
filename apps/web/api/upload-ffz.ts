@@ -1,5 +1,12 @@
 import { put } from '@vercel/blob'
 
+// Configuración de runtime para Vercel Function
+export const config = {
+  runtime: 'nodejs18.x',
+  regions: ['iad1', 'cdg1'],
+  maxDuration: 30,
+}
+
 // Headers CORS para permitir requests desde el plugin de Figma
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',

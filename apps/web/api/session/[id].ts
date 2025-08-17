@@ -1,5 +1,12 @@
 import { list } from '@vercel/blob'
 
+// Configuración de runtime para Vercel Function
+export const config = {
+  runtime: 'nodejs18.x',
+  regions: ['iad1', 'cdg1'],
+  maxDuration: 30,
+}
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
