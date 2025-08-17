@@ -5,8 +5,7 @@
     }
   },
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm -w build && if [ -d apps/web/dist ]; then echo 'Monorepo root detected, copying apps/web/dist -> dist'; rm -rf dist && mkdir -p dist && cp -a apps/web/dist/. dist/; else echo 'apps/web root detected, skipping copy'; fi",
-  "outputDirectory": "dist",
+  "buildCommand": "pnpm -w build && if [ -d apps/web/dist ]; then echo 'Copying apps/web/dist -> / (root)'; cp -a apps/web/dist/. ./; else echo 'apps/web root detected, skipping copy'; fi",
   "headers": [
     {
       "source": "/(.*)",
