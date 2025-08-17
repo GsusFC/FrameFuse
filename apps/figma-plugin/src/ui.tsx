@@ -6,7 +6,7 @@ import { useState, useEffect } from 'preact/hooks'
 // Componentes UI mejorados
 import { Header, APIKeyPage, FrameGrid, ExportSettings } from './components'
 import { ExportButton } from './components/ExportButton'
-import { WEB_APP_ORIGIN } from './config'
+import { WEB_APP_ORIGIN, API_BASE, getSlideshowUrl } from './config'
 
 interface Frame {
   id: string
@@ -266,70 +266,93 @@ function Plugin() {
   const handleOpenSlideshow = async (url: string, images?: { name: string; data: number[]; width?: number; height?: number }[]) => {
     console.log('🎬 Opening slideshow:', url)
     
-    // If images are provided, generate FFZ and send to web app
+    // Always try to open the window synchronously on user gesture to avoid popup blockers
+    const finalUrl = url.startsWith('http') ? url : `https://${url}`
+    let targetWindow: Window | null = null
+    try {
+      targetWindow = window.open(finalUrl, '_blank')
+      if (!targetWindow) {
+        console.warn('⚠️ Popup blocked or window handle not available, will try API upload fallback')
+      } else {
+        console.log('🪟 Opened target window for FrameFuse')
+      }
+    } catch (e) {
+      console.error('❌ window.open failed, will try API upload fallback', e)
+    }
+
+    const useApiUpload = !targetWindow
+
+    // If images are provided, generate FFZ and send via postMessage or upload via API as fallback
     if (images && images.length > 0) {
-      console.log('📦 Generating FFZ file from images before opening slideshow...')
-      
+      console.log('📦 Generating FFZ file from images...')
       try {
-        // Import FFZGenerator dynamically
         const { FFZGenerator } = await import('./utils/FFZGenerator')
-        
-        // Convert images to FrameImageData format
         const frameData = images.map(img => ({
           name: img.name,
           data: new Uint8Array(img.data),
           width: img.width || 1920,
           height: img.height || 1080
         }))
-        
-        // Generate FFZ file
         const ffzData = FFZGenerator.generateFFZ(frameData)
         console.log('✅ FFZ file generated, size:', ffzData.length, 'bytes')
-        
-        // Open the web app window first
-        const webWindow = window.open(url, '_blank')
-        
-        // Determine safe target origin from the provided URL (avoid cross-origin reads)
-        let targetOrigin = '*'
-        try {
-          const parsed = new URL(url)
-          targetOrigin = parsed.origin
-        } catch {
-          // Fallback to configured origin if URL parsing fails
-          targetOrigin = WEB_APP_ORIGIN
+
+        if (!useApiUpload && targetWindow) {
+          // Use explicit target origin instead of wildcard
+          let targetOrigin = 'https://frame-fuse-web.vercel.app'
+          try { targetOrigin = new URL(finalUrl).origin } catch {}
+
+          // Wait a bit for the page to be ready and send via postMessage
+          setTimeout(async () => {
+            try {
+              console.log('📤 Sending FFZ to web app via postMessage', { targetOrigin, size: ffzData.length })
+              targetWindow!.postMessage({ type: 'figma-ping', timestamp: Date.now() }, targetOrigin)
+              setTimeout(async () => {
+                const ok = await FFZGenerator.sendFFZToWebApp(ffzData, targetWindow as Window, targetOrigin)
+                console.log('✅ FFZ postMessage result:', ok)
+              }, 500)
+            } catch (sendErr) {
+              console.error('❌ Failed to send FFZ via postMessage, switching to API upload fallback:', sendErr)
+              await uploadViaAPI(ffzData)
+            }
+          }, 400)
+        } else {
+          // Fallback: upload to API and open slideshow URL with sessionId
+          await uploadViaAPI(ffzData)
         }
-        
-        // Wait for window to load, then send FFZ
-        setTimeout(() => {
-          if (webWindow) {
-            FFZGenerator.sendFFZToWebApp(ffzData, webWindow, targetOrigin)
-              .then(() => console.log('✅ FFZ sent to web app successfully'))
-              .catch(error => console.error('❌ Failed to send FFZ:', error))
-          }
-        }, 1500) // Increased delay to ensure web app is ready
-        
       } catch (error) {
-        console.error('❌ Failed to generate or send FFZ:', error)
-        // Fallback to old method
-        const webWindow = window.open(url, '_blank')
-        setTimeout(() => {
-          if (webWindow) {
-            webWindow.postMessage({
-              type: 'figma-frames-import',
-              images: images
-            }, '*')
-            console.log('✅ Fallback: Images sent to web app successfully')
-          }
-        }, 1000)
+        console.error('❌ Error generating FFZ for slideshow:', error)
       }
-    } else {
-      // No images, just open the URL normally
-      parent.postMessage({
-        pluginMessage: {
-          type: 'open-external-url',
-          url: url
+    }
+
+    async function uploadViaAPI(ffzData: Uint8Array) {
+      try {
+        const payload = { ffzData: Array.from(ffzData) }
+        const res = await fetch(`${API_BASE}/upload-ffz`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
+        const data = await res.json() as { sessionId: string; blobUrl: string }
+        const sessionUrl = getSlideshowUrl(data.sessionId)
+        console.log('🔗 Opening slideshow by session id:', { sessionId: data.sessionId, sessionUrl })
+        try {
+          window.open(sessionUrl, '_blank')
+        } catch {
+          parent.postMessage({ pluginMessage: { type: 'open-external-url', url: sessionUrl } }, '*')
         }
-      }, '*')
+      } catch (e) {
+        console.error('❌ API upload failed:', e)
+        // As a last resort, if we still have a window reference and images, try raw images
+        if (targetWindow && images?.length) {
+          try {
+            targetWindow.postMessage({
+              type: 'figma-frames-import',
+              data: { images, timestamp: Date.now() }
+            }, '*')
+          } catch {}
+        }
+      }
     }
   }
 

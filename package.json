@@ -15,6 +15,9 @@
     "typecheck": "turbo run typecheck",
     "format": "prettier --write ."
   },
+  "dependencies": {
+    "@vercel/blob": "^0.26.1"
+  },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.8.0",
     "@typescript-eslint/parser": "^7.8.0",

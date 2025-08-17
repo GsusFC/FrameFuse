@@ -1,7 +1,7 @@
 import { showUI, on, once, emit } from '@create-figma-plugin/utilities'
 import { AuthController } from './controllers/AuthController'
 import { FrameFuseAPIService } from './services/FrameFuseAPIService'
-import { WEB_APP_ORIGIN } from './config'
+import { WEB_APP_ORIGIN, getSlideshowUrl } from './config'
 
 // Global instances
 let authController: AuthController
@@ -105,6 +105,12 @@ function setupMessageHandlers() {
     } else if (messageType === 'open-external-url') {
       console.log('🔗 Processing open external URL:', message)
       handleOpenExternalUrl(message.url)
+    } else if (messageType === 'open-slideshow-with-ffz') {
+      console.log('🎬 Processing open slideshow with FFZ:', { url: message.url, ffzSize: message.ffzData?.length })
+      handleOpenSlideshowWithFFZ(message.url, message.ffzData)
+    } else if (messageType === 'open-slideshow-with-images') {
+      console.log('🎬 Processing open slideshow with raw images:', { url: message.url, images: message.images?.length })
+      handleOpenSlideshowWithImages(message.url, message.images)
     } else {
       console.log('❓ Unknown message type:', messageType, 'Full message:', msg)
     }
@@ -463,6 +469,53 @@ function handleOpenExternalUrl(url: string) {
   }
 }
 
+function handleOpenSlideshowWithFFZ(url: string, ffzData: number[]) {
+  try {
+    console.log('🎬 Opening slideshow with FFZ:', { url, ffzDataSize: ffzData?.length })
+    
+    // First, open the URL with figma.openExternal
+    const finalUrl = url.startsWith('http') ? url : `https://${url}`
+    figma.openExternal(finalUrl)
+    console.log('✅ Slideshow URL opened:', finalUrl)
+    
+    // Note: En el contexto del plugin de Figma, no podemos acceder directamente
+    // a la ventana que se abrió, porque figma.openExternal() no devuelve una referencia
+    // Sin embargo, en la aplicación web real, el flujo será:
+    // 1. La aplicación web se abre
+    // 2. El plugin puede usar window.postMessage o similar para enviar los datos
+    // 3. La aplicación web escucha estos mensajes
+    
+    console.log('📦 FFZ data would be sent to web app (size:', ffzData?.length, 'bytes)')
+    console.log('💡 The web app should be ready to receive the FFZ data via postMessage')
+    
+    // En un contexto real, aquí intentaríamos enviar el FFZ a la aplicación web
+    // Pero como figma.openExternal abre en una nueva pestaña del navegador,
+    // necesitamos que la aplicación web escuche mensajes del plugin
+    
+  } catch (error) {
+    console.error('❌ Failed to open slideshow with FFZ:', error)
+  }
+}
+
+function handleOpenSlideshowWithImages(url: string, images: any[]) {
+  try {
+    console.log('🎬 Opening slideshow with raw images:', { url, imagesCount: images?.length })
+    
+    // First, open the URL with figma.openExternal
+    const finalUrl = url.startsWith('http') ? url : `https://${url}`
+    figma.openExternal(finalUrl)
+    console.log('✅ Slideshow URL opened:', finalUrl)
+    
+    console.log('🖼️ Raw images would be sent to web app (count:', images?.length, ')')
+    console.log('💡 The web app should be ready to receive the raw images via postMessage')
+    
+    // Similar to FFZ case, the web app needs to listen for these messages
+    
+  } catch (error) {
+    console.error('❌ Failed to open slideshow with raw images:', error)
+  }
+}
+
 async function handleFrameExport(frameIds: string[], settings: any) {
   console.log('🚀 handleFrameExport called!')
   console.log('📤 Starting frame export and upload to FrameFuse...')
@@ -639,6 +692,7 @@ async function handleFrameExport(frameIds: string[], settings: any) {
       return { name: base, data: Array.from(r.imageData!), width: r.metadata?.width, height: r.metadata?.height }
     })
 
+    const sessionId = `local_${Date.now()}`
     const slideshowUrl = WEB_APP_ORIGIN
 
     // Send success completion with images and local URL
@@ -647,7 +701,7 @@ async function handleFrameExport(frameIds: string[], settings: any) {
       data: {
         success: true,
         exportId: exportId,
-        sessionId: `local_${Date.now()}`,
+        sessionId: sessionId,
         projectId: undefined,
         projectUrl: slideshowUrl,
         framesExported: frameResults.filter(r => r.success).length,

@@ -149,6 +149,8 @@ export type PluginMessageType =
   | 'validate-auth'
   | 'close-plugin'
   | 'open-external-url'
+  | 'open-slideshow-with-ffz'
+  | 'open-slideshow-with-images'
   | 'error';
 
 // FrameFuse API types
