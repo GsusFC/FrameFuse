@@ -10,32 +10,46 @@ const DEFAULT_ENDPOINT = 'https://frame-fuse-web.vercel.app'
 
 function parseArgs(argv) {
   const args = {}
-  for (const a of argv.slice(2)) {
-    const m = a.match(/^--([^=]+)=(.*)$/)
-    if (m) args[m[1]] = m[2]
-    else if (a.startsWith('--')) args[a.slice(2)] = true
+  const arr = argv.slice(2)
+  for (let i = 0; i < arr.length; i++) {
+    const a = arr[i]
+    if (a === '--') continue
+    const m = a.match(/^--([^=]+)(?:=(.*))?$/)
+    if (m) {
+      const key = m[1]
+      let val
+      if (m[2] !== undefined) {
+        val = m[2]
+      } else if (arr[i + 1] && !arr[i + 1].startsWith('--')) {
+        i++
+        val = arr[i]
+      } else {
+        val = true
+      }
+      args[key] = val
+    }
   }
   return args
 }
 
 async function main() {
   const args = parseArgs(process.argv)
-  const endpoint = args.endpoint || DEFAULT_ENDPOINT
+  const endpoint = typeof args.endpoint === 'string' && args.endpoint ? args.endpoint : DEFAULT_ENDPOINT
   const url = `${endpoint.replace(/\/$/, '')}/api/upload-ffz`
 
   // Build ffzData (array of bytes)
   let buffer
-  if (args.file) {
+  if (args.file && typeof args.file === 'string') {
     const fs = await import('node:fs/promises')
     buffer = await fs.readFile(args.file)
   } else {
-    const text = args.data ?? 'Hello from FrameFuse'
+    const text = typeof args.data === 'string' ? args.data : 'Hello from FrameFuse'
     buffer = Buffer.from(text, 'utf8')
   }
   const ffzData = Array.from(buffer.values())
 
   const payload = { ffzData }
-  if (args.sessionId) payload.sessionId = args.sessionId
+  if (typeof args.sessionId === 'string' && args.sessionId) payload.sessionId = args.sessionId
 
   const res = await fetch(url, {
     method: 'POST',

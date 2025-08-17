@@ -2,7 +2,7 @@
 
 // Configuración de runtime para Vercel Function
 export const config = {
-  runtime: 'nodejs18.x',
+  runtime: 'nodejs20.x',
   regions: ['iad1', 'cdg1'],
   maxDuration: 30,
 }

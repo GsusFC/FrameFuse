@@ -2,25 +2,39 @@
 
 // Simple session fetcher for FrameFuse
 // Usage examples:
-//   scripts/get-session.mjs --sessionId test-123
+//   scripts/get-session.mjs --sessionId=test-123
 //   scripts/get-session.mjs --endpoint https://frame-fuse-web.vercel.app --sessionId abc
 
 const DEFAULT_ENDPOINT = 'https://frame-fuse-web.vercel.app'
 
 function parseArgs(argv) {
   const args = {}
-  for (const a of argv.slice(2)) {
-    const m = a.match(/^--([^=]+)=(.*)$/)
-    if (m) args[m[1]] = m[2]
-    else if (a.startsWith('--')) args[a.slice(2)] = true
+  const arr = argv.slice(2)
+  for (let i = 0; i < arr.length; i++) {
+    const a = arr[i]
+    if (a === '--') continue
+    const m = a.match(/^--([^=]+)(?:=(.*))?$/)
+    if (m) {
+      const key = m[1]
+      let val
+      if (m[2] !== undefined) {
+        val = m[2]
+      } else if (arr[i + 1] && !arr[i + 1].startsWith('--')) {
+        i++
+        val = arr[i]
+      } else {
+        val = true
+      }
+      args[key] = val
+    }
   }
   return args
 }
 
 async function main() {
   const args = parseArgs(process.argv)
-  const endpoint = args.endpoint || DEFAULT_ENDPOINT
-  const sessionId = args.sessionId
+  const endpoint = typeof args.endpoint === 'string' && args.endpoint ? args.endpoint : DEFAULT_ENDPOINT
+  const sessionId = typeof args.sessionId === 'string' && args.sessionId ? args.sessionId : null
   if (!sessionId) {
     console.error('Missing required --sessionId')
     process.exit(2)

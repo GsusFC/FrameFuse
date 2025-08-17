@@ -13,7 +13,9 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "upload-ffz": "node scripts/upload-ffz.mjs",
+    "get-session": "node scripts/get-session.mjs"
   },
   "dependencies": {
     "@vercel/blob": "^1.1.1"
