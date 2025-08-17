@@ -22,6 +22,10 @@
       ]
     }
   ],
+  "functions": {
+    "api/**.ts": { "runtime": "nodejs20.x", "maxDuration": 30 },
+    "api/**/*.ts": { "runtime": "nodejs20.x", "maxDuration": 30 }
+  },
   "routes": [
     { "handle": "filesystem" },
     { "src": "/.*", "dest": "/index.html" }
