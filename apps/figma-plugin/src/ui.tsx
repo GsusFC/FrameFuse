@@ -263,24 +263,42 @@ function Plugin() {
     }
   }
 
-  const handleOpenSlideshow = async (url: string, images?: { name: string; data: number[]; width?: number; height?: number }[]) => {
+  const handleOpenSlideshow = async (
+    url: string,
+    images?: { name: string; data: number[]; width?: number; height?: number }[],
+    preOpenedWindow?: Window | null
+  ) => {
     console.log('🎬 Opening slideshow:', url)
     
-    // Always try to open the window synchronously on user gesture to avoid popup blockers
+    // Preferir ventana preabierta para evitar popup blockers
     const finalUrl = url.startsWith('http') ? url : `https://${url}`
-    let targetWindow: Window | null = null
+    let targetWindow: Window | null = preOpenedWindow ?? null
     try {
-      targetWindow = window.open(finalUrl, '_blank')
+      if (targetWindow) {
+        console.log('🪟 Reusing pre-opened window handle')
+        try {
+          // Navegar la ventana preabierta
+          targetWindow.location.href = finalUrl
+        } catch (navErr) {
+          console.warn('⚠️ Failed to navigate pre-opened window, opening anew', navErr)
+          targetWindow = null
+        }
+      }
       if (!targetWindow) {
-        console.warn('⚠️ Popup blocked or window handle not available, will try API upload fallback')
-      } else {
-        console.log('🪟 Opened target window for FrameFuse')
+        // Como último recurso, abrir aquí (puede ser bloqueado si no es gesture)
+        targetWindow = window.open(finalUrl, '_blank')
+        if (!targetWindow) {
+          console.warn('⚠️ Popup blocked or no window handle available')
+        } else {
+          console.log('🪟 Opened target window for FrameFuse')
+        }
       }
     } catch (e) {
-      console.error('❌ window.open failed, will try API upload fallback', e)
+      console.error('❌ Opening/navigating window failed', e)
     }
 
-    const useApiUpload = !targetWindow
+    // Evitar backend: no usar API upload
+    const useApiUpload = false
 
     // If images are provided, generate FFZ and send via postMessage or upload via API as fallback
     if (images && images.length > 0) {
@@ -296,62 +314,51 @@ function Plugin() {
         const ffzData = FFZGenerator.generateFFZ(frameData)
         console.log('✅ FFZ file generated, size:', ffzData.length, 'bytes')
 
-        if (!useApiUpload && targetWindow) {
-          // Use explicit target origin instead of wildcard
+        // Si tenemos handle de ventana, intentar handshake + reintentos de postMessage
+        if (targetWindow) {
           let targetOrigin = 'https://frame-fuse-web.vercel.app'
           try { targetOrigin = new URL(finalUrl).origin } catch {}
 
-          // Wait a bit for the page to be ready and send via postMessage
-          setTimeout(async () => {
+          const maxAttempts = 10
+          const delayMs = 400
+
+          const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+          // Intento inicial de ping para activar listeners del receptor
+          try { targetWindow.postMessage({ type: 'figma-ping', timestamp: Date.now() }, targetOrigin) } catch {}
+
+          let sent = false
+          for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-              console.log('📤 Sending FFZ to web app via postMessage', { targetOrigin, size: ffzData.length })
-              targetWindow!.postMessage({ type: 'figma-ping', timestamp: Date.now() }, targetOrigin)
-              setTimeout(async () => {
-                const ok = await FFZGenerator.sendFFZToWebApp(ffzData, targetWindow as Window, targetOrigin)
-                console.log('✅ FFZ postMessage result:', ok)
-              }, 500)
+              console.log(`📤 Sending FFZ (attempt ${attempt}/${maxAttempts})`, { targetOrigin, size: ffzData.length })
+              const ok = await FFZGenerator.sendFFZToWebApp(ffzData, targetWindow as Window, targetOrigin)
+              if (ok) {
+                console.log('✅ FFZ postMessage sent successfully')
+                sent = true
+                break
+              }
             } catch (sendErr) {
-              console.error('❌ Failed to send FFZ via postMessage, switching to API upload fallback:', sendErr)
-              await uploadViaAPI(ffzData)
+              console.warn('⚠️ FFZ send attempt failed:', sendErr)
             }
-          }, 400)
+            await sleep(delayMs)
+          }
+
+          if (!sent) {
+            console.error('❌ Unable to send FFZ after retries')
+            // Último recurso: intentar enviar imágenes crudas
+            try {
+              targetWindow.postMessage({
+                type: 'figma-frames-import',
+                data: { images, timestamp: Date.now() }
+              }, targetOrigin)
+              console.log('✅ Sent raw images as last resort')
+            } catch {}
+          }
         } else {
-          // Fallback: upload to API and open slideshow URL with sessionId
-          await uploadViaAPI(ffzData)
+          console.warn('⚠️ No window handle available; cannot send FFZ without backend')
         }
       } catch (error) {
         console.error('❌ Error generating FFZ for slideshow:', error)
-      }
-    }
-
-    async function uploadViaAPI(ffzData: Uint8Array) {
-      try {
-        const payload = { ffzData: Array.from(ffzData) }
-        const res = await fetch(`${API_BASE}/upload-ffz`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        })
-        if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
-        const data = await res.json() as { sessionId: string; blobUrl: string }
-        const sessionUrl = getSlideshowUrl(data.sessionId)
-        console.log('🔗 Opening slideshow by session id:', { sessionId: data.sessionId, sessionUrl })
-        try {
-          window.open(sessionUrl, '_blank')
-        } catch {
-          parent.postMessage({ pluginMessage: { type: 'open-external-url', url: sessionUrl } }, '*')
-        }
-      } catch (e) {
-        console.error('❌ API upload failed:', e)
-        // As a last resort, if we still have a window reference and images, try raw images
-        if (targetWindow && images?.length) {
-          try {
-            targetWindow.postMessage({
-              type: 'figma-frames-import',
-              data: { images, timestamp: Date.now() }
-            }, '*')
-          } catch {}
-        }
       }
     }
   }

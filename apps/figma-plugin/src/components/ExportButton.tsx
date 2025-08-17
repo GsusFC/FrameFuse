@@ -34,7 +34,7 @@ interface ExportButtonProps {
   selectedFrames: string[]
   isAuthenticated: boolean
   onExport: () => void
-  onOpenSlideshow: (url: string, images?: ExportImageItem[]) => void
+  onOpenSlideshow: (url: string, images?: ExportImageItem[], preOpenedWindow?: Window | null) => void
 }
 
 export function ExportButton({
@@ -104,7 +104,19 @@ export function ExportButton({
     const handleOpenSlideshow = () => {
       console.log('🎬 Opening slideshow and preparing reset...')
       setButtonState('opening')
-      onOpenSlideshow(exportResult.slideshowUrl!, exportResult.images)
+
+      // Preabrir ventana sincronamente para evitar popup blockers
+      let preOpenedWindow: Window | null = null
+      try {
+        preOpenedWindow = window.open('about:blank', '_blank')
+        if (!preOpenedWindow) {
+          console.warn('⚠️ Popup may have been blocked; proceeding without preOpenedWindow')
+        }
+      } catch (e) {
+        console.error('❌ Failed to pre-open window:', e)
+      }
+
+      onOpenSlideshow(exportResult.slideshowUrl!, exportResult.images, preOpenedWindow)
       
       // Reset después de 2 segundos para permitir nueva exportación
       setTimeout(() => {
