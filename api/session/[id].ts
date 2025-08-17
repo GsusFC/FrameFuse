@@ -2,38 +2,50 @@ import { list } from '@vercel/blob'
 
 // Configuración de runtime para Vercel Function
 export const config = {
-  runtime: 'nodejs18.x',
+  runtime: 'nodejs20.x',
   regions: ['iad1', 'cdg1'],
   maxDuration: 30,
 }
 
-const CORS_HEADERS = {
+const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 }
 
+function setCors(res: any) {
+  for (const [k, v] of Object.entries(CORS_HEADERS)) res.setHeader(k, v as string)
+}
+
+function sendJSON(res: any, statusCode: number, body: any) {
+  setCors(res)
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  res.statusCode = statusCode
+  res.end(JSON.stringify(body))
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
-    return res.status(200).set(CORS_HEADERS).send('')
+    setCors(res)
+    res.statusCode = 204
+    res.end('')
+    return
   }
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' })
+    return sendJSON(res, 405, { error: 'Method not allowed' })
   }
   try {
     const id = req.query?.id || req.params?.id
     const sessionId = Array.isArray(id) ? id[0] : id
-    if (!sessionId) return res.status(400).set(CORS_HEADERS).json({ error: 'Missing session id' })
+    if (!sessionId) return sendJSON(res, 400, { error: 'Missing session id' })
 
     const prefix = `ffz-sessions/${sessionId}.ffz`
     const blobs = await list({ prefix })
 
     const found = blobs.blobs.find(b => b.pathname === prefix)
-    if (!found) return res.status(404).set(CORS_HEADERS).json({ error: 'Not found' })
+    if (!found) return sendJSON(res, 404, { error: 'Not found' })
 
-    // Optionally, we could stream the content or just return metadata
-    // For now, return the public blob URL so the client can fetch it
-    return res.status(200).set(CORS_HEADERS).json({
+    return sendJSON(res, 200, {
       success: true,
       sessionId,
       blobUrl: found.url,
@@ -43,6 +55,6 @@ export default async function handler(req: any, res: any) {
     })
   } catch (error: any) {
     console.error('❌ Error fetching session:', error)
-    return res.status(500).set(CORS_HEADERS).json({ success: false, error: error?.message || 'Internal server error' })
+    return sendJSON(res, 500, { success: false, error: error?.message || 'Internal server error' })
   }
 }
