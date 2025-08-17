@@ -1,4 +1,4 @@
-import { put } from '@vercel/blob'
+// import { put } from '@vercel/blob'
 
 // Configuración de runtime para Vercel Function
 export const config = {
@@ -53,6 +53,9 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
+    // Import dinámico para compatibilidad ESM/CJS
+    const { put } = await import('@vercel/blob')
+
     // Validar content-type
     const contentType = String(req.headers['content-type'] || '')
     if (!contentType.includes('application/json')) {
