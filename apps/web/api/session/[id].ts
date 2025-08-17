@@ -1,4 +1,4 @@
-import { list, get } from '@vercel/blob'
+import { list } from '@vercel/blob'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
