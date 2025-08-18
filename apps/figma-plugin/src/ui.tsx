@@ -79,8 +79,8 @@ function Plugin() {
   const [figmaSelection, setFigmaSelection] = useState<string[]>([]) // Frames seleccionados en Figma
   const [apiKey, setApiKey] = useState('')
   const [exportFormat, setExportFormat] = useState('JPG') // Changed to JPG for smaller file sizes
-  const [exportScale, setExportScale] = useState('0.75') // Reduced to 0.75x for smaller files under 1MB limit
-  const [exportQuality, setExportQuality] = useState('0.4') // JPG quality (0.1-1.0) - Further reduced for Vercel limits
+  const [exportScale, setExportScale] = useState('0.5') // Reduced to 0.5x for smaller files under 1MB limit  
+const [exportQuality, setExportQuality] = useState('0.3') // JPG quality (0.1-1.0) - Reduced for consistent <1MB chunks
   const [useAbsoluteBounds, setUseAbsoluteBounds] = useState(false) // Include effects and strokes
   const [contentsOnly, setContentsOnly] = useState(false) // Export contents only
   // These states are now handled internally by ExportButton
@@ -337,75 +337,50 @@ function Plugin() {
 
     async function uploadImagesViaAPI(imgs: { name: string; data: number[]; width?: number; height?: number }[]) {
       try {
-        console.log(`🚀 Starting direct upload of ${imgs.length} images`)
+        console.log(`🚀 Starting chunked upload of ${imgs.length} images`)
         
-        // 1. Generar signed URLs para upload directo
-        const urlPayload = {
-          images: imgs.map((img, index) => ({
-            name: img.name,
-            width: img.width || 1920,
-            height: img.height || 1080,
-            index
-          }))
-        }
-
-        console.log('🔗 Requesting signed URLs...')
-        const urlRes = await fetch(`${API_BASE}/generate-upload-urls`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(urlPayload)
-        })
-
-        if (!urlRes.ok) throw new Error(`Failed to get upload URLs: ${urlRes.status}`)
+        // Generar un sessionId único para esta subida
+        const sessionId = `ffz_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
         
-        const { sessionId, uploads } = await urlRes.json()
-        console.log(`✅ Got ${uploads.length} signed URLs for session: ${sessionId}`)
-
-        // 2. Upload cada imagen directamente a Blob Storage
-        const uploadPromises = uploads.map(async (uploadConfig: any, index: number) => {
-          const img = imgs[index]
-          const imageData = new Uint8Array(img.data)
-          
-          console.log(`📤 Direct uploading ${index + 1}/${imgs.length}: ${img.name} (${imageData.length} bytes)`)
-
-          // Upload directo con signed URL
-          const formData = new FormData()
-          
-          // Agregar fields requeridos por Vercel Blob
-          if (uploadConfig.fields) {
-            Object.entries(uploadConfig.fields).forEach(([key, value]: [string, any]) => {
-              formData.append(key, value)
-            })
+        // Subir cada imagen individualmente
+        const uploadPromises = imgs.map(async (img, index) => {
+          const chunkPayload = {
+            sessionId,
+            imageIndex: index,
+            totalImages: imgs.length,
+            image: {
+              name: img.name,
+              data: img.data,
+              width: img.width || 1920,
+              height: img.height || 1080
+            }
           }
           
-          // Agregar el archivo
-          const blob = new Blob([imageData], { type: 'image/jpeg' })
-          formData.append('file', blob, uploadConfig.filename)
-
-          const uploadRes = await fetch(uploadConfig.uploadUrl, {
-            method: 'POST',
-            body: formData
-          })
-
-          if (!uploadRes.ok) throw new Error(`Direct upload failed for ${img.name}: ${uploadRes.status}`)
+          console.log(`📤 Uploading image ${index + 1}/${imgs.length}: ${img.name}`)
           
-          console.log(`✅ ${img.name} uploaded directly to blob storage`)
-          return uploadConfig.metadata
+          const res = await fetch(`${API_BASE}/upload-image-chunk`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(chunkPayload)
+          })
+          
+          if (!res.ok) throw new Error(`Upload failed for image ${index + 1}: ${res.status}`)
+          
+          const result = await res.json()
+          console.log(`✅ Image ${index + 1} uploaded: ${result.size} bytes`)
+          return result
         })
 
-        // Esperar a que todas las imágenes se suban directamente
-        const imageMetadata = await Promise.all(uploadPromises)
-        console.log(`✅ All ${imgs.length} images uploaded directly to storage`)
+        // Esperar a que todas las imágenes se suban
+        await Promise.all(uploadPromises)
+        console.log(`✅ All ${imgs.length} images uploaded successfully`)
 
-        // 3. Finalizar y crear el FFZ
+        // Finalizar y crear el FFZ
         console.log('🔄 Finalizing FFZ creation...')
-        const finalizeRes = await fetch(`${API_BASE}/finalize-direct-ffz`, {
+        const finalizeRes = await fetch(`${API_BASE}/finalize-ffz`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            sessionId, 
-            imageMetadata 
-          })
+          body: JSON.stringify({ sessionId, totalImages: imgs.length })
         })
 
         if (!finalizeRes.ok) throw new Error(`FFZ finalization failed: ${finalizeRes.status}`)
@@ -422,7 +397,7 @@ function Plugin() {
           try { window.open(sessionUrl, '_blank') } catch {}
         }
       } catch (e) {
-        console.error('❌ API direct upload failed:', e)
+        console.error('❌ API chunked upload failed:', e)
         // Fallback: abre la web aunque no haya sesión creada
         try {
           console.warn('🟡 Fallback: opening WEB_APP_ORIGIN without session')

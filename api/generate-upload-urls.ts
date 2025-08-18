@@ -47,7 +47,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { handleUpload } = await import('@vercel/blob/client')
+    const { put } = await import('@vercel/blob')
     const token = (globalThis as any)?.process?.env?.BLOB_READ_WRITE_TOKEN as string | undefined
 
     if (!token) {
@@ -68,55 +68,39 @@ export default async function handler(req: any, res: any) {
     // Generar sessionId único
     const sessionId = providedSessionId || `ffz_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
 
-    console.log(`🔗 Generating ${images.length} signed URLs for session: ${sessionId}`)
+    console.log(`🔗 Preparing direct upload info for ${images.length} images, session: ${sessionId}`)
 
-    // Generar signed URLs para cada imagen
-    const uploadPromises = images.map(async (img: any, index: number) => {
+    // En lugar de signed URLs, vamos a usar un enfoque híbrido simple
+    // El plugin subirá a nuestro endpoint pero con archivos más pequeños
+    const uploadConfigs = images.map((img: any, index: number) => {
       const name = String(img.name || `frame_${index + 1}.png`)
       const hasExt = /\.[a-z0-9]+$/i.test(name)
       const filename = hasExt ? name : `${name}.png`
-      const pathname = `ffz-direct/${sessionId}/images/${filename}`
-
-      try {
-        // Generar signed URL para upload directo
-        const { url, fields } = await handleUpload({
-          pathname,
-          token,
-          allowedFileTypes: ['image/jpeg', 'image/png', 'image/webp'],
-          maximumSizeInBytes: 10 * 1024 * 1024, // 10MB max per image
-          callbackUrl: undefined // No callback needed
-        })
-
-        return {
-          index,
+      
+      return {
+        index,
+        filename,
+        sessionId,
+        metadata: {
+          id: `clip_${index + 1}`,
           filename,
-          pathname,
-          uploadUrl: url,
-          fields,
-          metadata: {
-            id: `clip_${index + 1}`,
-            filename,
-            width: Number(img.width || 1920),
-            height: Number(img.height || 1080),
-            durationMs: 3000,
-            transitionAfter: { pluginId: 'fade', durationMs: 500 }
-          }
+          width: Number(img.width || 1920),
+          height: Number(img.height || 1080),
+          durationMs: 3000,
+          transitionAfter: { pluginId: 'fade', durationMs: 500 }
         }
-      } catch (err) {
-        console.error(`Error generating signed URL for ${filename}:`, err)
-        throw new Error(`Failed to generate upload URL for ${filename}`)
       }
     })
 
-    const uploadConfigs = await Promise.all(uploadPromises)
-
-    console.log(`✅ Generated ${uploadConfigs.length} signed URLs for session: ${sessionId}`)
+    console.log(`✅ Generated upload configs for ${uploadConfigs.length} images, session: ${sessionId}`)
 
     return sendJSON(res, 200, {
       success: true,
       sessionId,
       uploads: uploadConfigs,
-      message: `Generated ${uploadConfigs.length} upload URLs`
+      message: `Generated ${uploadConfigs.length} upload configurations`,
+      // Indicar que debe usar el endpoint de chunks mejorado
+      useDirectChunks: true
     })
 
   } catch (error: any) {
