@@ -8,6 +8,7 @@ type UploadState = {
   clipboardDurationMs: number | null;
   clipboardTransition: ImageClip['transitionAfter'] | null;
   addClips: (files: File[]) => Promise<void>;
+  replaceClips: (files: File[]) => Promise<void>;
   setDuration: (id: string, durationMs: number) => void;
   reorder: (from: number, to: number) => void;
   removeClip: (id: string) => void;
@@ -58,6 +59,30 @@ export const useUploadStore = create<UploadState>((set, get) => ({
     set({ clips });
     await persist(clips);
   },
+  
+  async replaceClips(files: File[]) {
+    const settled = await Promise.allSettled<ImageClip>(
+      files.map(async (file): Promise<ImageClip> => {
+        const id = crypto.randomUUID();
+        const dataUrl = await fileToDataUrl(file);
+        // Validación mínima del data URL
+        if (!dataUrl.startsWith('data:image/')) throw new Error('Invalid image data URL');
+        const img = await loadImage(dataUrl);
+        return {
+          id,
+          src: dataUrl,
+          width: img.width,
+          height: img.height,
+          durationMs: 1000
+        } satisfies ImageClip;
+      })
+    );
+    const successful = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+    const clips = successful; // Replace instead of append
+    set({ clips });
+    await persist(clips);
+  },
+  
   setDuration(id, durationMs) {
     const updated = get().clips.map((c) => (c.id === id ? { ...c, durationMs } : c));
     const clips = enforceConstraints(updated);

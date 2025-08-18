@@ -41,4 +41,4 @@ const ENV_API_BASE = getEnv('FFZ_API_BASE') || getEnv('VITE_API_BASE') || getEnv
 export const API_BASE = ENV_API_BASE ? ENV_API_BASE.replace(/\/$/, '') : 'https://frame-fuse-api.vercel.app/api'
 
 export const getSlideshowUrl = (sessionId?: string) =>
-  sessionId ? `${WEB_APP_ORIGIN}/slideshow?sessionId=${sessionId}` : WEB_APP_ORIGIN
+  sessionId ? `${WEB_APP_ORIGIN}?sessionId=${sessionId}` : WEB_APP_ORIGIN

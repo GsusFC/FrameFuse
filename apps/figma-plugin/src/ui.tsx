@@ -79,8 +79,8 @@ function Plugin() {
   const [figmaSelection, setFigmaSelection] = useState<string[]>([]) // Frames seleccionados en Figma
   const [apiKey, setApiKey] = useState('')
   const [exportFormat, setExportFormat] = useState('JPG') // Changed to JPG for smaller file sizes
-  const [exportScale, setExportScale] = useState('0.5') // Reduced to 0.5x for smaller files under 1MB limit
-  const [exportQuality, setExportQuality] = useState('0.3') // JPG quality (0.1-1.0) - Reduced for consistent <1MB chunks
+  const [exportScale, setExportScale] = useState('0.5') // Balanced: 0.5x scale for decent quality + smaller files
+  const [exportQuality, setExportQuality] = useState('0.5') // Balanced JPG quality (0.5) for decent videos
   const [useAbsoluteBounds, setUseAbsoluteBounds] = useState(false) // Include effects and strokes
   const [contentsOnly, setContentsOnly] = useState(false) // Export contents only
   // These states are now handled internally by ExportButton
@@ -204,7 +204,7 @@ function Plugin() {
 
     const settings = {
       format: exportFormat,
-      scale: parseInt(exportScale),
+      scale: parseFloat(exportScale),
       quality: parseFloat(exportQuality),
       useAbsoluteBounds: useAbsoluteBounds,
       contentsOnly: contentsOnly
@@ -337,6 +337,14 @@ function Plugin() {
 
     async function uploadImagesViaAPI(imgs: { name: string; data: number[]; width?: number; height?: number }[]) {
       try {
+        // Calcular tamaño total del payload
+        const totalSize = JSON.stringify({ images: imgs }).length
+        console.log(`📊 Payload size: ${(totalSize / 1024 / 1024).toFixed(2)}MB`)
+        
+        if (totalSize > 6000000) { // ~6MB límite más realista para quality 0.5
+          throw new Error('Payload too large even with compression. Try fewer frames.')
+        }
+        
         const payload = { images: imgs }
         const res = await fetch(`${API_BASE}/upload-ffz`, {
           method: 'POST',

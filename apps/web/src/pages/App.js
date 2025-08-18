@@ -7,6 +7,7 @@ import { useUploadStore } from '../features/upload/store';
 import { Button } from '@framefuse/ui-kit';
 import { ImportFFZ } from '../features/upload/ImportFFZ';
 import { unzipSync, strFromU8 } from 'fflate';
+import { API_BASE } from '../config';
 function getQueryParam(name) {
     try {
         const url = new URL(window.location.href);
@@ -16,25 +17,31 @@ function getQueryParam(name) {
         return null;
     }
 }
+function detectImageMime(data) {
+    // PNG signature: 89 50 4E 47 0D 0A 1A 0A
+    if (data.length >= 8 &&
+        data[0] === 0x89 &&
+        data[1] === 0x50 &&
+        data[2] === 0x4e &&
+        data[3] === 0x47 &&
+        data[4] === 0x0d &&
+        data[5] === 0x0a &&
+        data[6] === 0x1a &&
+        data[7] === 0x0a) {
+        return { mime: 'image/png', ext: 'png' };
+    }
+    // JPEG signature: FF D8 ... FF D9 (we only check start)
+    if (data.length >= 2 && data[0] === 0xff && data[1] === 0xd8) {
+        return { mime: 'image/jpeg', ext: 'jpeg' };
+    }
+    // Fallback to PNG
+    return { mime: 'image/png', ext: 'png' };
+}
 async function fetchFFZBySession(sessionId) {
     try {
-        // Intento 1: mismo origen (útil en producción o si existe proxy local)
-        const base = window.location.origin;
-        let res = await fetch(`${base}/api/session/${encodeURIComponent(sessionId)}`);
-        if (!res.ok) {
-            // Intento 2: fallback a origen de producción si estamos en localhost o si el primer intento falla
-            const prodOrigin = 'https://frame-fuse-web.vercel.app';
-            try {
-                res = await fetch(`${prodOrigin}/api/session/${encodeURIComponent(sessionId)}`);
-            }
-            catch (e) {
-                throw new Error(`Session fetch failed: ${res.status}`);
-            }
-        }
-        const data = (await res.json());
-        if (!data.blobUrl)
-            return null;
-        const ffzRes = await fetch(data.blobUrl);
+        // Usar API_BASE centralizado; el endpoint maneja CORS
+        // Descargar directamente el FFZ a través del API (proxy) para evitar CORS/COEP
+        const ffzRes = await fetch(`${API_BASE}/session/${encodeURIComponent(sessionId)}?download=1`);
         if (!ffzRes.ok)
             throw new Error(`Blob download failed: ${ffzRes.status}`);
         const buf = new Uint8Array(await ffzRes.arrayBuffer());
@@ -82,9 +89,32 @@ export function App() {
         void hydrate();
     }, [hydrate]);
     const addClips = useUploadStore((s) => s.addClips);
+    const replaceClips = useUploadStore((s) => s.replaceClips);
     // Escuchar mensajes del plugin de Figma
     React.useEffect(() => {
         const handleMessage = async (event) => {
+            // Seguridad: validar origen del mensaje (aceptar mismo origen o figma.com)
+            try {
+                const origin = event.origin || '';
+                const sameOrigin = origin === window.location.origin;
+                let isFigma = false;
+                if (origin) {
+                    try {
+                        const host = new URL(origin).hostname;
+                        isFigma = host.endsWith('figma.com');
+                    }
+                    catch { }
+                }
+                else {
+                    // Algunos entornos (Electron) pueden reportar origin vacío/null; permitimos si el tipo es esperado
+                    isFigma = false;
+                }
+                if (!(sameOrigin || isFigma)) {
+                    // Ignorar mensajes de orígenes no permitidos
+                    return;
+                }
+            }
+            catch { }
             // Verificar que el mensaje viene del plugin de Figma
             if (event.data?.type === 'figma-frames-import' && event.data?.images) {
                 try {
@@ -182,18 +212,18 @@ export function App() {
                 return;
             try {
                 const unzipped = unzipSync(ffzBuf);
-                const imageEntries = Object.keys(unzipped).filter((k) => k.startsWith('images/'));
+                const imageEntries = Object.keys(unzipped).filter((k) => /\.(png|jpg|jpeg)$/i.test(k));
                 const files = imageEntries.map((name) => {
                     const data = unzipped[name];
-                    const lower = name.toLowerCase();
-                    const ext = lower.endsWith('.png') ? 'png' : (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) ? 'jpeg' : 'png';
-                    const fileName = name.split('/').pop() || 'img.png';
+                    const sig = detectImageMime(data);
+                    const baseName = (name.split('/').pop() || 'img').replace(/\.(png|jpg|jpeg)$/i, '');
+                    const fileName = `${baseName}.${sig.ext}`;
                     const copy = new Uint8Array(data.byteLength);
                     copy.set(data);
-                    return new File([copy.buffer], fileName, { type: `image/${ext}` });
+                    return new File([copy], fileName, { type: sig.mime });
                 });
                 if (files.length)
-                    await addClips(files);
+                    await replaceClips(files);
                 // Optionally clean param
                 try {
                     const url = new URL(window.location.href);
@@ -207,7 +237,7 @@ export function App() {
             }
         })();
         return () => { cancelled = true; };
-    }, [addClips]);
+    }, [replaceClips]);
     const fileRef = React.useRef(null);
     return (_jsxs("div", { className: "h-screen flex flex-col bg-[var(--bg)] text-[var(--text)]", onDragOver: (e) => e.preventDefault(), onDrop: async (e) => {
             e.preventDefault();

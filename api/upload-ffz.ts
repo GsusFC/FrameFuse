@@ -93,7 +93,7 @@ export default async function handler(req: any, res: any) {
         const filename = hasExt ? name : `${name}.png`
         return {
           id: `clip_${index + 1}`,
-          filename,
+          filename: `images/${filename}`, // Ensure full path to image
           width: Number(img?.width || 1920),
           height: Number(img?.height || 1080),
           durationMs: 3000,

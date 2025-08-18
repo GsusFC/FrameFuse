@@ -19,10 +19,12 @@ export function ImportFFZ() {
         // Build File objects from buffers to reuse addClips
         const files = imageEntries.map((name) => {
             const data = unzipped[name];
-            const ext = name.toLowerCase().endsWith('.png') ? 'png' : name.toLowerCase().endsWith('.jpg') || name.toLowerCase().endsWith('.jpeg') ? 'jpeg' : 'png';
+            const { mime, ext } = detectImageMime(data);
+            const baseName = (name.split('/').pop() || 'img').replace(/\.(png|jpg|jpeg)$/i, '');
+            const fileName = `${baseName}.${ext}`;
             const copy = new Uint8Array(data.byteLength);
             copy.set(data);
-            return new File([copy.buffer], name.split('/').pop() || 'img.png', { type: `image/${ext}` });
+            return new File([copy], fileName, { type: mime });
         });
         await addClips(files);
         // Map durations and transitions by filename
@@ -34,6 +36,23 @@ export function ImportFFZ() {
                 setDuration(clip.id, clip.durationMs);
             if (clip.transitionAfter)
                 setTransitionAfter(clip.id, clip.transitionAfter);
+        }
+        function detectImageMime(data) {
+            if (data.length >= 8 &&
+                data[0] === 0x89 &&
+                data[1] === 0x50 &&
+                data[2] === 0x4e &&
+                data[3] === 0x47 &&
+                data[4] === 0x0d &&
+                data[5] === 0x0a &&
+                data[6] === 0x1a &&
+                data[7] === 0x0a) {
+                return { mime: 'image/png', ext: 'png' };
+            }
+            if (data.length >= 2 && data[0] === 0xff && data[1] === 0xd8) {
+                return { mime: 'image/jpeg', ext: 'jpeg' };
+            }
+            return { mime: 'image/png', ext: 'png' };
         }
     }
     return (_jsxs("div", { className: "flex items-center gap-2", children: [_jsx(Button, { size: "sm", variant: "outline", onClick: () => fileRef.current?.click(), children: "Importar .ffz" }), _jsx("input", { ref: fileRef, type: "file", accept: ".ffz,.zip", className: "hidden", onChange: async (e) => {

@@ -38,7 +38,7 @@
       "figma"
     ],
     "id": "framefuse-exporter",
-    "name": "FrameFuse Exporter",
+    "name": "FrameFuse Exporter v2",
     "main": "src/main.ts",
     "ui": "src/ui.tsx",
     "networkAccess": {

@@ -88,6 +88,17 @@ function setupMessageHandlers() {
 
     // Handle both direct messages and pluginMessage wrapper
     const message = msg.pluginMessage || msg
+    
+    // Handle array-format messages from on/emit system
+    if (Array.isArray(msg) && msg.length === 2) {
+      const [eventType, data] = msg
+      if (eventType === 'open-external-url') {
+        console.log('🔗 Processing open external URL from on/emit:', data)
+        handleOpenExternalUrl(data.url)
+        return
+      }
+    }
+    
     const messageType = message.type
 
     if (messageType === 'authenticate') {
@@ -591,27 +602,28 @@ async function handleFrameExport(frameIds: string[], settings: any) {
     })
 
     try {
-      // Export frame with user-configured settings (basic settings only)
-      const exportSettings: any = {
-        format: settings.format || 'JPG',
-        constraint: {
-          type: 'SCALE',
-          value: settings.scale || 1
-        }
+      // Export frame with user-configured settings
+      let exportSettings: any = {
+        format: settings.format || 'JPG'
       };
 
-      // Note: Figma API doesn't support quality settings in exportAsync
-      // Quality will be handled at post-processing level if needed
-
-      // Validate export settings
-      if (exportSettings.quality && (exportSettings.quality < 0.1 || exportSettings.quality > 1.0)) {
-        console.warn(`⚠️ Invalid quality value ${exportSettings.quality}, using 0.8`);
-        exportSettings.quality = 0.8;
-      }
-
-      if (exportSettings.constraint.value < 1 || exportSettings.constraint.value > 4) {
-        console.warn(`⚠️ Invalid scale value ${exportSettings.constraint.value}, using 1`);
-        exportSettings.constraint.value = 1;
+      // Use WIDTH constraint for fractional scales instead of SCALE constraint
+      if (settings.scale && settings.scale < 1) {
+        // Calculate width based on scale (assume 1920px base width)
+        const targetWidth = Math.floor(1920 * settings.scale);
+        exportSettings.constraint = {
+          type: 'WIDTH',
+          value: Math.max(targetWidth, 200) // Minimum 200px width for decent quality
+        };
+        console.log(`🔧 Using WIDTH constraint: ${exportSettings.constraint.value}px (scale: ${settings.scale})`);
+      } else {
+        // Use SCALE constraint for values >= 1
+        const scaleValue = Math.max(1, Math.min(4, Math.floor(settings.scale || 1)));
+        exportSettings.constraint = {
+          type: 'SCALE', 
+          value: scaleValue
+        };
+        console.log(`🔧 Using SCALE constraint: ${scaleValue}x`);
       }
 
       console.log(`📸 Exporting frame "${frame.name}" with settings:`, exportSettings);

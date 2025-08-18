@@ -5,6 +5,7 @@ type UploadState = {
     clipboardDurationMs: number | null;
     clipboardTransition: ImageClip['transitionAfter'] | null;
     addClips: (files: File[]) => Promise<void>;
+    replaceClips: (files: File[]) => Promise<void>;
     setDuration: (id: string, durationMs: number) => void;
     reorder: (from: number, to: number) => void;
     removeClip: (id: string) => void;

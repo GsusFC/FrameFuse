@@ -6,23 +6,6 @@
   },
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "echo 'skip build'",
-  "functions": {
-    "api/upload-ffz.ts": {
-      "maxDuration": 30
-    },
-    "api/upload-image-chunk.ts": {
-      "maxDuration": 15
-    },
-    "api/finalize-ffz.ts": {
-      "maxDuration": 30
-    },
-    "api/generate-upload-urls.ts": {
-      "maxDuration": 10
-    },
-    "api/finalize-direct-ffz.ts": {
-      "maxDuration": 30
-    }
-  },
   "headers": [
     {
       "source": "/api/(.*)",

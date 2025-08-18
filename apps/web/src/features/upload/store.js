@@ -6,9 +6,12 @@ export const useUploadStore = create((set, get) => ({
     clipboardDurationMs: null,
     clipboardTransition: null,
     async addClips(files) {
-        const newClips = await Promise.all(files.map(async (file) => {
+        const settled = await Promise.allSettled(files.map(async (file) => {
             const id = crypto.randomUUID();
             const dataUrl = await fileToDataUrl(file);
+            // Validación mínima del data URL
+            if (!dataUrl.startsWith('data:image/'))
+                throw new Error('Invalid image data URL');
             const img = await loadImage(dataUrl);
             return {
                 id,
@@ -18,7 +21,31 @@ export const useUploadStore = create((set, get) => ({
                 durationMs: 1000
             };
         }));
-        const clips = [...get().clips, ...newClips];
+        const successful = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+        if (!successful.length)
+            return; // nada que agregar si todas fallaron
+        const clips = [...get().clips, ...successful];
+        set({ clips });
+        await persist(clips);
+    },
+    async replaceClips(files) {
+        const settled = await Promise.allSettled(files.map(async (file) => {
+            const id = crypto.randomUUID();
+            const dataUrl = await fileToDataUrl(file);
+            // Validación mínima del data URL
+            if (!dataUrl.startsWith('data:image/'))
+                throw new Error('Invalid image data URL');
+            const img = await loadImage(dataUrl);
+            return {
+                id,
+                src: dataUrl,
+                width: img.width,
+                height: img.height,
+                durationMs: 1000
+            };
+        }));
+        const successful = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+        const clips = successful; // Replace instead of append
         set({ clips });
         await persist(clips);
     },

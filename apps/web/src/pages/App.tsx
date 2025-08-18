@@ -88,6 +88,7 @@ export function App() {
   }, [hydrate]);
   
   const addClips = useUploadStore((s) => s.addClips);
+const replaceClips = useUploadStore((s) => s.replaceClips);
 
   // Escuchar mensajes del plugin de Figma
   React.useEffect(() => {
@@ -222,7 +223,7 @@ export function App() {
           copy.set(data)
           return new File([copy], fileName, { type: sig.mime })
         })
-        if (files.length) await addClips(files)
+        if (files.length) await replaceClips(files)
         // Optionally clean param
         try {
           const url = new URL(window.location.href)
@@ -234,7 +235,7 @@ export function App() {
       }
     })()
     return () => { cancelled = true }
-  }, [addClips])
+  }, [replaceClips])
 
   const fileRef = React.useRef<HTMLInputElement>(null);
   return (
