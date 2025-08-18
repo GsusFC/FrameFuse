@@ -68,18 +68,41 @@ export function createFfmpegWorkerExporter(_options: FfmpegWorkerOptions = {}): 
   const ffmpeg = new FFmpeg();
 
   async function ensureLoaded(): Promise<void> {
+    console.log('🔍 Verificando si FFmpeg está cargado...', { loaded: ffmpeg.loaded });
     if (!ffmpeg.loaded) {
-      await ffmpeg.load();
+      console.log('⏳ FFmpeg no está cargado, iniciando carga...');
+      try {
+        await ffmpeg.load();
+        console.log('✅ FFmpeg cargado exitosamente');
+      } catch (error) {
+        console.error('❌ Error cargando FFmpeg:', error);
+        throw error;
+      }
+    } else {
+      console.log('✅ FFmpeg ya estaba cargado');
     }
   }
 
   return {
     async export(timeline: Timeline, opts: ExportOptions) {
-      await ensureLoaded();
+      console.log('🔧 Iniciando export, cargando FFmpeg...');
+      try {
+        await ensureLoaded();
+        console.log('✅ FFmpeg cargado correctamente');
+      } catch (error) {
+        console.error('❌ Error crítico cargando FFmpeg:', error);
+        throw new Error(`Failed to load FFmpeg: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
 
       const totalMs = timeline.clips.reduce((s, c) => s + c.durationMs, 0) || 1;
       const onProgress = opts.onProgress;
       const abortSignal = opts.signal;
+      
+      console.log('📊 Timeline info:', {
+        clips: timeline.clips.length,
+        totalMs,
+        firstClipSrc: timeline.clips[0]?.src?.substring(0, 50) + '...'
+      });
 
       const abortHandler = () => {
         try {
@@ -95,14 +118,28 @@ export function createFfmpegWorkerExporter(_options: FfmpegWorkerOptions = {}): 
       });
 
       // Write input images
+      console.log('📁 Procesando imágenes...');
       const images: { name: string; ext: string; durSec: number }[] = [];
       for (let i = 0; i < timeline.clips.length; i++) {
         const clip = timeline.clips[i];
-        const { bytes, ext } = dataUrlToBytes(clip.src);
-        const name = `img_${i}.${ext}`;
-        await ffmpeg.writeFile(name, bytes);
-        images.push({ name, ext, durSec: Math.max(0.033, toSec(clip.durationMs)) });
+        console.log(`📷 Procesando imagen ${i + 1}/${timeline.clips.length}`);
+        
+        try {
+          const { bytes, ext } = dataUrlToBytes(clip.src);
+          console.log(`📄 Data URL convertido: ${bytes.length} bytes, ext: ${ext}`);
+          
+          const name = `img_${i}.${ext}`;
+          console.log(`💾 Escribiendo archivo: ${name}`);
+          await ffmpeg.writeFile(name, bytes);
+          console.log(`✅ Archivo ${name} escrito correctamente`);
+          
+          images.push({ name, ext, durSec: Math.max(0.033, toSec(clip.durationMs)) });
+        } catch (error) {
+          console.error(`❌ Error procesando imagen ${i}:`, error);
+          throw error;
+        }
       }
+      console.log('✅ Todas las imágenes procesadas');
 
       const scale = buildScaleFilter(opts);
       const filterLines: string[] = [];
@@ -197,7 +234,18 @@ export function createFfmpegWorkerExporter(_options: FfmpegWorkerOptions = {}): 
       }
 
       try {
+        console.log('🎬 Ejecutando comando FFmpeg:', args.join(' '));
         await ffmpeg.exec(args);
+        console.log('✅ Comando FFmpeg completado');
+        
+        // Listar archivos para debugging
+        const files = await ffmpeg.listDir('.');
+        console.log('📂 Archivos disponibles después de FFmpeg:');
+        files.forEach((file: any) => {
+          console.log(`  - ${file.name} (${file.isDir ? 'dir' : 'file'})`);
+        });
+        
+        console.log('📖 Leyendo archivo de salida:', output);
         const data = (await ffmpeg.readFile(output)) as Uint8Array;
         // Create a plain Uint8Array copy to avoid SharedArrayBuffer typing issues
         const copy = new Uint8Array(data.byteLength);
