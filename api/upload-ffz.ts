@@ -55,6 +55,16 @@ export default async function handler(req: any, res: any) {
   try {
     // Import dinámico para compatibilidad ESM/CJS
     const { put } = await import('@vercel/blob')
+    const token = (globalThis as any)?.process?.env?.BLOB_READ_WRITE_TOKEN as string | undefined
+
+    if (!token) {
+      // Mensaje claro para operadores; evitar filtrar detalles innecesarios al cliente
+      console.error('Missing BLOB_READ_WRITE_TOKEN environment variable. Configure it in the Vercel project (API).')
+      return sendJSON(res, 500, {
+        success: false,
+        error: 'Storage is not configured. Please contact the administrator.'
+      })
+    }
 
     // Validar content-type
     const contentType = String(req.headers['content-type'] || '')
@@ -126,6 +136,7 @@ export default async function handler(req: any, res: any) {
       access: 'public',
       addRandomSuffix: false,
       cacheControlMaxAge: 3600,
+      token
     })
 
     console.log('✅ FFZ uploaded to blob storage:', { sessionId, url: blob.url, size: finalFfz.length })

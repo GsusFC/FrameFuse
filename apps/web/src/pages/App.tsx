@@ -20,11 +20,8 @@ function getQueryParam(name: string): string | null {
 async function fetchFFZBySession(sessionId: string): Promise<Uint8Array | null> {
   try {
     // Usar API_BASE centralizado; el endpoint maneja CORS
-    const res = await fetch(`${API_BASE}/session/${encodeURIComponent(sessionId)}`)
-    if (!res.ok) throw new Error(`Session fetch failed: ${res.status}`)
-    const data = (await res.json()) as { blobUrl?: string }
-    if (!data.blobUrl) return null
-    const ffzRes = await fetch(data.blobUrl)
+    // Descargar directamente el FFZ a través del API (proxy) para evitar CORS/COEP
+    const ffzRes = await fetch(`${API_BASE}/session/${encodeURIComponent(sessionId)}?download=1`)
     if (!ffzRes.ok) throw new Error(`Blob download failed: ${ffzRes.status}`)
     const buf = new Uint8Array(await ffzRes.arrayBuffer())
     return buf

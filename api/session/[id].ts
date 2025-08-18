@@ -44,6 +44,27 @@ export default async function handler(req: any, res: any) {
     const found = blobs.blobs.find(b => b.pathname === prefix)
     if (!found) return sendJSON(res, 404, { error: 'Not found' })
 
+    // Si se solicita descarga directa, proxyear el contenido para evitar problemas de COEP/CORS
+    const download = (req.query?.download ?? req.query?.dl ?? '').toString()
+    if (download && download !== '0' && download !== 'false') {
+      try {
+        const ffzRes = await fetch(found.url)
+        if (!ffzRes.ok) throw new Error(`Upstream blob fetch failed: ${ffzRes.status}`)
+        const B = (globalThis as any).Buffer
+        const buf = B.from(await ffzRes.arrayBuffer())
+        setCors(res)
+        res.statusCode = 200
+        res.setHeader('Content-Type', 'application/octet-stream')
+        res.setHeader('Content-Length', String(buf.byteLength))
+        res.setHeader('Content-Disposition', `inline; filename="${sessionId}.ffz"`)
+        res.end(buf)
+        return
+      } catch (e: any) {
+        console.error('❌ Error proxying FFZ download:', e)
+        return sendJSON(res, 502, { success: false, error: 'Failed to download session FFZ' })
+      }
+    }
+
     return sendJSON(res, 200, {
       success: true,
       sessionId,
