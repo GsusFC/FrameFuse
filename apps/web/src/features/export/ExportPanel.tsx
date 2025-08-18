@@ -225,6 +225,11 @@ export function ExportPanel() {
           className="rounded border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-50"
           onClick={async () => {
             console.log('🎬 Iniciando exportación...');
+            
+            // Mensaje temporal para el usuario
+            alert('⚠️ La exportación de video no está funcionando actualmente. Estamos trabajando en una solución. Por ahora puedes descargar las imágenes individualmente haciendo clic derecho en cada una.');
+            return;
+            
             setBusy(true);
             setProgress(0);
             setStartTime(Date.now());
@@ -281,7 +286,7 @@ export function ExportPanel() {
               console.log('💾 Descarga iniciada');
             } catch (e) {
               console.error('❌ Error durante exportación:', e);
-              alert(`Error durante la exportación: ${e.message}`);
+              alert(`Error durante la exportación: ${e instanceof Error ? e.message : 'Error desconocido'}`);
             } finally {
               setBusy(false);
               setController(null);
