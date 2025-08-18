@@ -7,6 +7,44 @@ import { useUploadStore } from '../features/upload/store';
 import { Button } from '@framefuse/ui-kit';
 import { ImportFFZ } from '../features/upload/ImportFFZ';
 import { unzipSync, strFromU8 } from 'fflate';
+function getQueryParam(name) {
+    try {
+        const url = new URL(window.location.href);
+        return url.searchParams.get(name);
+    }
+    catch {
+        return null;
+    }
+}
+async function fetchFFZBySession(sessionId) {
+    try {
+        // Intento 1: mismo origen (útil en producción o si existe proxy local)
+        const base = window.location.origin;
+        let res = await fetch(`${base}/api/session/${encodeURIComponent(sessionId)}`);
+        if (!res.ok) {
+            // Intento 2: fallback a origen de producción si estamos en localhost o si el primer intento falla
+            const prodOrigin = 'https://frame-fuse-web.vercel.app';
+            try {
+                res = await fetch(`${prodOrigin}/api/session/${encodeURIComponent(sessionId)}`);
+            }
+            catch (e) {
+                throw new Error(`Session fetch failed: ${res.status}`);
+            }
+        }
+        const data = (await res.json());
+        if (!data.blobUrl)
+            return null;
+        const ffzRes = await fetch(data.blobUrl);
+        if (!ffzRes.ok)
+            throw new Error(`Blob download failed: ${ffzRes.status}`);
+        const buf = new Uint8Array(await ffzRes.arrayBuffer());
+        return buf;
+    }
+    catch (e) {
+        console.error('Auto-import session fetch failed:', e);
+        return null;
+    }
+}
 export function App() {
     const hydrate = useUploadStore((s) => s.hydrate);
     const [timelineHeight, setTimelineHeight] = React.useState(() => {
@@ -131,6 +169,44 @@ export function App() {
         };
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
+    }, [addClips]);
+    // Auto-import by sessionId in URL
+    React.useEffect(() => {
+        const sessionId = getQueryParam('sessionId');
+        if (!sessionId)
+            return;
+        let cancelled = false;
+        (async () => {
+            const ffzBuf = await fetchFFZBySession(sessionId);
+            if (!ffzBuf || cancelled)
+                return;
+            try {
+                const unzipped = unzipSync(ffzBuf);
+                const imageEntries = Object.keys(unzipped).filter((k) => k.startsWith('images/'));
+                const files = imageEntries.map((name) => {
+                    const data = unzipped[name];
+                    const lower = name.toLowerCase();
+                    const ext = lower.endsWith('.png') ? 'png' : (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) ? 'jpeg' : 'png';
+                    const fileName = name.split('/').pop() || 'img.png';
+                    const copy = new Uint8Array(data.byteLength);
+                    copy.set(data);
+                    return new File([copy.buffer], fileName, { type: `image/${ext}` });
+                });
+                if (files.length)
+                    await addClips(files);
+                // Optionally clean param
+                try {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('sessionId');
+                    window.history.replaceState({}, '', url.toString());
+                }
+                catch { }
+            }
+            catch (e) {
+                console.error('Failed to import FFZ from session:', e);
+            }
+        })();
+        return () => { cancelled = true; };
     }, [addClips]);
     const fileRef = React.useRef(null);
     return (_jsxs("div", { className: "h-screen flex flex-col bg-[var(--bg)] text-[var(--text)]", onDragOver: (e) => e.preventDefault(), onDrop: async (e) => {

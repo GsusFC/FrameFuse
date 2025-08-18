@@ -1,4 +1,5 @@
 // import { put } from '@vercel/blob'
+import { zipSync, strToU8 } from 'fflate'
 
 // Configuración de runtime para Vercel Function
 export const config = {
@@ -64,33 +65,77 @@ export default async function handler(req: any, res: any) {
 
     // Leer body como JSON
     const body = await readJsonBody(req)
-    const { ffzData, sessionId: providedSessionId } = body || {}
-
-    // Validar que ffzData existe y es un array
-    if (!ffzData || !Array.isArray(ffzData)) {
-      return sendJSON(res, 400, { error: 'ffzData debe ser un array de números' })
-    }
+    const { ffzData, images, sessionId: providedSessionId } = body || {}
 
     // Generar sessionId único o usar el proporcionado
     const sessionId = providedSessionId || `ffz_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
 
-    // Convertir array de números a Uint8Array
-    const ffzBuffer = new Uint8Array(ffzData)
+    // Determinar fuente del FFZ
+    let finalFfz: Uint8Array | null = null
+    if (ffzData && Array.isArray(ffzData)) {
+      finalFfz = new Uint8Array(ffzData)
+    } else if (images && Array.isArray(images) && images.length > 0) {
+      // Construir FFZ desde imágenes crudas
+      const filesToZip: Record<string, Uint8Array> = {}
+
+      const clips = images.map((img: any, index: number) => {
+        const name: string = String(img?.name || `frame_${index + 1}.png`)
+        const hasExt = /\.[a-z0-9]+$/i.test(name)
+        const filename = hasExt ? name : `${name}.png`
+        return {
+          id: `clip_${index + 1}`,
+          filename,
+          width: Number(img?.width || 1920),
+          height: Number(img?.height || 1080),
+          durationMs: 3000,
+          transitionAfter: { pluginId: 'fade', durationMs: 500 }
+        }
+      })
+
+      const project = {
+        version: 1,
+        fps: 30,
+        width: Number(images?.[0]?.width || 1920),
+        height: Number(images?.[0]?.height || 1080),
+        clips
+      }
+
+      filesToZip['project.json'] = strToU8(JSON.stringify(project, null, 2))
+
+      images.forEach((img: any, index: number) => {
+        const name: string = String(img?.name || `frame_${index + 1}.png`)
+        const hasExt = /\.[a-z0-9]+$/i.test(name)
+        const filename = hasExt ? name : `${name}.png`
+        const path = `images/${filename}`
+        if (!img?.data || !Array.isArray(img.data)) {
+          throw new Error(`Imagen inválida en índice ${index}: falta data[]`)
+        }
+        filesToZip[path] = new Uint8Array(img.data)
+      })
+
+      finalFfz = zipSync(filesToZip, { level: 6, mem: 8 })
+      console.log('✅ FFZ generado en servidor desde imágenes:', { sessionId, size: finalFfz.length, imageCount: images.length })
+    } else {
+      return sendJSON(res, 400, { error: 'Debe proporcionar ffzData (number[]) o images (array)' })
+    }
 
     // Subir a Vercel Blob con pathname que incluye el sessionId
-    const blob = await put(`ffz-sessions/${sessionId}.ffz`, ffzBuffer, {
+    if (!finalFfz || !(finalFfz instanceof Uint8Array) || finalFfz.length === 0) {
+      return sendJSON(res, 400, { error: 'FFZ vacío o inválido' })
+    }
+    const blob = await put(`ffz-sessions/${sessionId}.ffz`, finalFfz, {
       access: 'public',
       addRandomSuffix: false,
       cacheControlMaxAge: 3600,
     })
 
-    console.log('✅ FFZ uploaded to blob storage:', { sessionId, url: blob.url, size: ffzBuffer.length })
+    console.log('✅ FFZ uploaded to blob storage:', { sessionId, url: blob.url, size: finalFfz.length })
 
     return sendJSON(res, 200, {
       success: true,
       sessionId,
       blobUrl: blob.url,
-      size: ffzBuffer.length,
+      size: finalFfz.length,
       message: 'FFZ file uploaded successfully',
     })
   } catch (error: any) {

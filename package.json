@@ -18,7 +18,8 @@
     "get-session": "node scripts/get-session.mjs"
   },
   "dependencies": {
-    "@vercel/blob": "^1.1.1"
+    "@vercel/blob": "^1.1.1",
+    "fflate": "^0.8.2"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.8.0",

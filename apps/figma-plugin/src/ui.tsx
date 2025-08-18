@@ -268,97 +268,40 @@ function Plugin() {
     images?: { name: string; data: number[]; width?: number; height?: number }[],
     preOpenedWindow?: Window | null
   ) => {
-    console.log('🎬 Opening slideshow:', url)
-    
-    // Preferir ventana preabierta para evitar popup blockers
+    console.log('🎬 Opening slideshow (always via backend session):', url)
     const finalUrl = url.startsWith('http') ? url : `https://${url}`
-    let targetWindow: Window | null = preOpenedWindow ?? null
-    try {
-      if (targetWindow) {
-        console.log('🪟 Reusing pre-opened window handle')
-        try {
-          // Navegar la ventana preabierta
-          targetWindow.location.href = finalUrl
-        } catch (navErr) {
-          console.warn('⚠️ Failed to navigate pre-opened window, opening anew', navErr)
-          targetWindow = null
-        }
+
+    if (!images || images.length === 0) {
+      console.warn('⚠️ No images provided to open slideshow')
+      try {
+        openExternalUrl(finalUrl)
+      } catch {
+        try { window.open(finalUrl, '_blank') } catch {}
       }
-      if (!targetWindow) {
-        // Como último recurso, abrir aquí (puede ser bloqueado si no es gesture)
-        targetWindow = window.open(finalUrl, '_blank')
-        if (!targetWindow) {
-          console.warn('⚠️ Popup blocked or no window handle available')
-        } else {
-          console.log('🪟 Opened target window for FrameFuse')
-        }
-      }
-    } catch (e) {
-      console.error('❌ Opening/navigating window failed', e)
+      return
     }
 
-    // Evitar backend: no usar API upload
-    const useApiUpload = false
+    await uploadImagesViaAPI(images)
 
-    // If images are provided, generate FFZ and send via postMessage or upload via API as fallback
-    if (images && images.length > 0) {
-      console.log('📦 Generating FFZ file from images...')
+    async function uploadImagesViaAPI(imgs: { name: string; data: number[]; width?: number; height?: number }[]) {
       try {
-        const { FFZGenerator } = await import('./utils/FFZGenerator')
-        const frameData = images.map(img => ({
-          name: img.name,
-          data: new Uint8Array(img.data),
-          width: img.width || 1920,
-          height: img.height || 1080
-        }))
-        const ffzData = FFZGenerator.generateFFZ(frameData)
-        console.log('✅ FFZ file generated, size:', ffzData.length, 'bytes')
-
-        // Si tenemos handle de ventana, intentar handshake + reintentos de postMessage
-        if (targetWindow) {
-          let targetOrigin = 'https://frame-fuse-web.vercel.app'
-          try { targetOrigin = new URL(finalUrl).origin } catch {}
-
-          const maxAttempts = 10
-          const delayMs = 400
-
-          const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
-
-          // Intento inicial de ping para activar listeners del receptor
-          try { targetWindow.postMessage({ type: 'figma-ping', timestamp: Date.now() }, targetOrigin) } catch {}
-
-          let sent = false
-          for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-              console.log(`📤 Sending FFZ (attempt ${attempt}/${maxAttempts})`, { targetOrigin, size: ffzData.length })
-              const ok = await FFZGenerator.sendFFZToWebApp(ffzData, targetWindow as Window, targetOrigin)
-              if (ok) {
-                console.log('✅ FFZ postMessage sent successfully')
-                sent = true
-                break
-              }
-            } catch (sendErr) {
-              console.warn('⚠️ FFZ send attempt failed:', sendErr)
-            }
-            await sleep(delayMs)
-          }
-
-          if (!sent) {
-            console.error('❌ Unable to send FFZ after retries')
-            // Último recurso: intentar enviar imágenes crudas
-            try {
-              targetWindow.postMessage({
-                type: 'figma-frames-import',
-                data: { images, timestamp: Date.now() }
-              }, targetOrigin)
-              console.log('✅ Sent raw images as last resort')
-            } catch {}
-          }
-        } else {
-          console.warn('⚠️ No window handle available; cannot send FFZ without backend')
+        const payload = { images: imgs }
+        const res = await fetch(`${API_BASE}/upload-ffz`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
+        const data = await res.json() as { sessionId: string }
+        const sessionUrl = getSlideshowUrl(data.sessionId)
+        console.log('🔗 Opening slideshow by session id (images):', { sessionId: data.sessionId, sessionUrl })
+        try {
+          openExternalUrl(sessionUrl)
+        } catch {
+          try { window.open(sessionUrl, '_blank') } catch {}
         }
-      } catch (error) {
-        console.error('❌ Error generating FFZ for slideshow:', error)
+      } catch (e) {
+        console.error('❌ API image upload failed:', e)
       }
     }
   }
@@ -367,6 +310,7 @@ function Plugin() {
     setIsSettingsOpen(true)
   }
 
+// ...
   const handleCloseSettings = () => {
     setIsSettingsOpen(false)
   }
