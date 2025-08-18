@@ -302,6 +302,13 @@ function Plugin() {
         }
       } catch (e) {
         console.error('❌ API image upload failed:', e)
+        // Fallback: abre la web aunque no haya sesión creada
+        try {
+          console.warn('🟡 Fallback: opening WEB_APP_ORIGIN without session')
+          openExternalUrl(WEB_APP_ORIGIN)
+        } catch {
+          try { window.open(WEB_APP_ORIGIN, '_blank') } catch {}
+        }
       }
     }
   }
