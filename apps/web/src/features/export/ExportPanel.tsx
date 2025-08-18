@@ -252,7 +252,7 @@ export function ExportPanel() {
                   gifPaletteStatsMode,
                   filename,
                   previewSeconds,
-                  onProgress: (p) => setProgress(p),
+                  onProgress: (p: number) => setProgress(p),
                   signal: ctrl.signal
                 }
               );
@@ -322,7 +322,7 @@ export function ExportPanel() {
                     gifLoop,
                     filename,
                     previewSeconds: seconds,
-                    onProgress: (p) => setEstProgress(p),
+                    onProgress: (p: number) => setEstProgress(p),
                     signal: ctrl.signal
                   }
                 );
