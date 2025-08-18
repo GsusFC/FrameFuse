@@ -15,6 +15,12 @@
     },
     "api/finalize-ffz.ts": {
       "maxDuration": 30
+    },
+    "api/generate-upload-urls.ts": {
+      "maxDuration": 10
+    },
+    "api/finalize-direct-ffz.ts": {
+      "maxDuration": 30
     }
   },
   "headers": [
