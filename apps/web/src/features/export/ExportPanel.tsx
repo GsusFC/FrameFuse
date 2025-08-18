@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useUploadStore } from '../upload/store';
 import { Button } from '@framefuse/ui-kit';
-import { createFfmpegWorkerExporter } from '@framefuse/ffmpeg-worker';
+// Lazy import para code-splitting y carga bajo demanda del worker/FFmpeg
 
 export function ExportPanel() {
   const clips = useUploadStore((s) => s.clips);
@@ -225,18 +225,15 @@ export function ExportPanel() {
           className="rounded border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-50"
           onClick={async () => {
             console.log('🎬 Iniciando exportación...');
-            
-            // Mensaje temporal para el usuario
-            alert('⚠️ La exportación de video no está funcionando actualmente. Estamos trabajando en una solución. Por ahora puedes descargar las imágenes individualmente haciendo clic derecho en cada una.');
-            return;
-            
             setBusy(true);
             setProgress(0);
             setStartTime(Date.now());
             const ctrl = new AbortController();
             setController(ctrl);
             try {
-              console.log('📦 Creando FFmpeg exporter...');
+              console.log('📦 Importando FFmpeg worker...');
+              const { createFfmpegWorkerExporter } = await import('@framefuse/ffmpeg-worker');
+              console.log('✅ Módulo importado, creando exporter...');
               const exporter = createFfmpegWorkerExporter();
               console.log('✅ Exporter creado:', exporter);
               
@@ -326,6 +323,7 @@ export function ExportPanel() {
               const ctrl = new AbortController();
               setEstController(ctrl);
               try {
+                const { createFfmpegWorkerExporter } = await import('@framefuse/ffmpeg-worker');
                 const exporter = createFfmpegWorkerExporter();
                 const seconds = previewSeconds && previewSeconds > 0 ? previewSeconds : 2;
                 const blob = await exporter.export(

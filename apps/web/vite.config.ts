@@ -8,12 +8,7 @@ export default defineConfig({
   },
   assetsInclude: ['**/*.wasm'],
   optimizeDeps: {
-    exclude: ['@ffmpeg/ffmpeg'],
-    include: [
-      '@framefuse/core',
-      '@framefuse/ffmpeg-worker',
-      '@framefuse/ui-kit'
-    ]
+    exclude: ['@ffmpeg/ffmpeg']
   },
   worker: {
     format: 'es'
