@@ -12,6 +12,14 @@ export default defineConfig({
   },
   worker: {
     format: 'es'
+  },
+  build: {
+    rollupOptions: {
+      external: [],
+      output: {
+        manualChunks: undefined
+      }
+    }
   }
 });
 
