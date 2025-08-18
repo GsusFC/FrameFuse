@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useUploadStore } from '../upload/store';
 import { Button } from '@framefuse/ui-kit';
-// Lazy import para code-splitting y carga bajo demanda del worker/FFmpeg
+import { createFfmpegWorkerExporter } from '@framefuse/ffmpeg-worker';
 
 export function ExportPanel() {
   const clips = useUploadStore((s) => s.clips);
@@ -230,7 +230,6 @@ export function ExportPanel() {
             const ctrl = new AbortController();
             setController(ctrl);
             try {
-              const { createFfmpegWorkerExporter } = await import('@framefuse/ffmpeg-worker');
               const exporter = createFfmpegWorkerExporter();
               const blob = await exporter.export(
                 { clips },
@@ -303,7 +302,6 @@ export function ExportPanel() {
               const ctrl = new AbortController();
               setEstController(ctrl);
               try {
-                const { createFfmpegWorkerExporter } = await import('@framefuse/ffmpeg-worker');
                 const exporter = createFfmpegWorkerExporter();
                 const seconds = previewSeconds && previewSeconds > 0 ? previewSeconds : 2;
                 const blob = await exporter.export(
