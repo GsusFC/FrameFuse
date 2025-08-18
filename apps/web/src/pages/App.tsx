@@ -17,6 +17,29 @@ function getQueryParam(name: string): string | null {
   }
 }
 
+function detectImageMime(data: Uint8Array): { mime: 'image/png' | 'image/jpeg'; ext: 'png' | 'jpeg' } {
+  // PNG signature: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    data.length >= 8 &&
+    data[0] === 0x89 &&
+    data[1] === 0x50 &&
+    data[2] === 0x4e &&
+    data[3] === 0x47 &&
+    data[4] === 0x0d &&
+    data[5] === 0x0a &&
+    data[6] === 0x1a &&
+    data[7] === 0x0a
+  ) {
+    return { mime: 'image/png', ext: 'png' };
+  }
+  // JPEG signature: FF D8 ... FF D9 (we only check start)
+  if (data.length >= 2 && data[0] === 0xff && data[1] === 0xd8) {
+    return { mime: 'image/jpeg', ext: 'jpeg' };
+  }
+  // Fallback to PNG
+  return { mime: 'image/png', ext: 'png' };
+}
+
 async function fetchFFZBySession(sessionId: string): Promise<Uint8Array | null> {
   try {
     // Usar API_BASE centralizado; el endpoint maneja CORS
@@ -172,12 +195,12 @@ export function App() {
         const imageEntries = Object.keys(unzipped).filter((k) => k.startsWith('images/'))
         const files: File[] = imageEntries.map((name) => {
           const data = unzipped[name]
-          const lower = name.toLowerCase()
-          const ext = lower.endsWith('.png') ? 'png' : (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) ? 'jpeg' : 'png'
-          const fileName = name.split('/').pop() || 'img.png'
+          const sig = detectImageMime(data)
+          const baseName = (name.split('/').pop() || 'img').replace(/\.(png|jpg|jpeg)$/i, '')
+          const fileName = `${baseName}.${sig.ext}`
           const copy = new Uint8Array(data.byteLength)
           copy.set(data)
-          return new File([copy.buffer], fileName, { type: `image/${ext}` })
+          return new File([copy], fileName, { type: sig.mime })
         })
         if (files.length) await addClips(files)
         // Optionally clean param
