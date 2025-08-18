@@ -6,6 +6,7 @@ import { useUploadStore } from '../features/upload/store';
 import { Button } from '@framefuse/ui-kit';
 import { ImportFFZ } from '../features/upload/ImportFFZ';
 import { unzipSync, strFromU8 } from 'fflate';
+import { API_BASE } from '../config';
 
 function getQueryParam(name: string): string | null {
   try {
@@ -18,18 +19,9 @@ function getQueryParam(name: string): string | null {
 
 async function fetchFFZBySession(sessionId: string): Promise<Uint8Array | null> {
   try {
-    // Intento 1: mismo origen (útil en producción o si existe proxy local)
-    const base = window.location.origin
-    let res = await fetch(`${base}/api/session/${encodeURIComponent(sessionId)}`)
-    if (!res.ok) {
-      // Intento 2: fallback a origen de producción si estamos en localhost o si el primer intento falla
-      const prodOrigin = 'https://frame-fuse-web.vercel.app'
-      try {
-        res = await fetch(`${prodOrigin}/api/session/${encodeURIComponent(sessionId)}`)
-      } catch (e) {
-        throw new Error(`Session fetch failed: ${res.status}`)
-      }
-    }
+    // Usar API_BASE centralizado; el endpoint maneja CORS
+    const res = await fetch(`${API_BASE}/session/${encodeURIComponent(sessionId)}`)
+    if (!res.ok) throw new Error(`Session fetch failed: ${res.status}`)
     const data = (await res.json()) as { blobUrl?: string }
     if (!data.blobUrl) return null
     const ffzRes = await fetch(data.blobUrl)
