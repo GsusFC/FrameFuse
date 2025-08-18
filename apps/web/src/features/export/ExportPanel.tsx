@@ -224,13 +224,25 @@ export function ExportPanel() {
           disabled={!clips.length || busy}
           className="rounded border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-50"
           onClick={async () => {
+            console.log('🎬 Iniciando exportación...');
             setBusy(true);
             setProgress(0);
             setStartTime(Date.now());
             const ctrl = new AbortController();
             setController(ctrl);
             try {
+              console.log('📦 Creando FFmpeg exporter...');
               const exporter = createFfmpegWorkerExporter();
+              console.log('✅ Exporter creado:', exporter);
+              
+              console.log('🎥 Iniciando export con opciones:', {
+                clips: clips.length,
+                format,
+                fps,
+                width,
+                height
+              });
+              
               const blob = await exporter.export(
                 { clips },
                 {
@@ -251,18 +263,25 @@ export function ExportPanel() {
                   gifPaletteStatsMode,
                   filename,
                   previewSeconds,
-                  onProgress: (p: number) => setProgress(p),
+                  onProgress: (p: number) => {
+                    console.log('📊 Progreso:', Math.round(p * 100) + '%');
+                    setProgress(p);
+                  },
                   signal: ctrl.signal
                 }
               );
+              
+              console.log('✅ Export completado, blob size:', blob.size);
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
               a.download = `${filename || 'export'}.${format}`;
               a.click();
               URL.revokeObjectURL(url);
+              console.log('💾 Descarga iniciada');
             } catch (e) {
-              // Si se canceló, no hacer nada
+              console.error('❌ Error durante exportación:', e);
+              alert(`Error durante la exportación: ${e.message}`);
             } finally {
               setBusy(false);
               setController(null);
