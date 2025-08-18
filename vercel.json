@@ -9,6 +9,12 @@
   "functions": {
     "api/upload-ffz.ts": {
       "maxDuration": 30
+    },
+    "api/upload-image-chunk.ts": {
+      "maxDuration": 15
+    },
+    "api/finalize-ffz.ts": {
+      "maxDuration": 30
     }
   },
   "headers": [

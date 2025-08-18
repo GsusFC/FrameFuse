@@ -337,23 +337,67 @@ function Plugin() {
 
     async function uploadImagesViaAPI(imgs: { name: string; data: number[]; width?: number; height?: number }[]) {
       try {
-        const payload = { images: imgs }
-        const res = await fetch(`${API_BASE}/upload-ffz`, {
+        console.log(`🚀 Starting chunked upload of ${imgs.length} images`)
+        
+        // Generar un sessionId único para esta subida
+        const sessionId = `ffz_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+        
+        // Subir cada imagen individualmente
+        const uploadPromises = imgs.map(async (img, index) => {
+          const chunkPayload = {
+            sessionId,
+            imageIndex: index,
+            totalImages: imgs.length,
+            image: {
+              name: img.name,
+              data: img.data,
+              width: img.width || 1920,
+              height: img.height || 1080
+            }
+          }
+          
+          console.log(`📤 Uploading image ${index + 1}/${imgs.length}: ${img.name}`)
+          
+          const res = await fetch(`${API_BASE}/upload-image-chunk`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(chunkPayload)
+          })
+          
+          if (!res.ok) throw new Error(`Upload failed for image ${index + 1}: ${res.status}`)
+          
+          const result = await res.json()
+          console.log(`✅ Image ${index + 1} uploaded: ${result.size} bytes`)
+          return result
+        })
+
+        // Esperar a que todas las imágenes se suban
+        await Promise.all(uploadPromises)
+        console.log(`✅ All ${imgs.length} images uploaded successfully`)
+
+        // Finalizar y crear el FFZ
+        console.log('🔄 Finalizing FFZ creation...')
+        const finalizeRes = await fetch(`${API_BASE}/finalize-ffz`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ sessionId, totalImages: imgs.length })
         })
-        if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
-        const data = await res.json() as { sessionId: string }
-        const sessionUrl = getSlideshowUrl(data.sessionId)
-        console.log('🔗 Opening slideshow by session id (images):', { sessionId: data.sessionId, sessionUrl })
+
+        if (!finalizeRes.ok) throw new Error(`FFZ finalization failed: ${finalizeRes.status}`)
+        
+        const finalizeData = await finalizeRes.json()
+        console.log(`✅ FFZ created successfully: ${finalizeData.size} bytes`)
+
+        const sessionUrl = getSlideshowUrl(sessionId)
+        console.log('🔗 Opening slideshow by session id:', { sessionId, sessionUrl })
+        
         try {
           openExternalUrl(sessionUrl)
         } catch {
           try { window.open(sessionUrl, '_blank') } catch {}
         }
       } catch (e) {
-        console.error('❌ API image upload failed:', e)
+        console.error('❌ API chunked upload failed:', e)
         // Fallback: abre la web aunque no haya sesión creada
         try {
           console.warn('🟡 Fallback: opening WEB_APP_ORIGIN without session')
