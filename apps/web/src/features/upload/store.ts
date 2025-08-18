@@ -36,10 +36,12 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   clipboardDurationMs: null,
   clipboardTransition: null,
   async addClips(files: File[]) {
-    const newClips = await Promise.all(
-      files.map(async (file) => {
+    const settled = await Promise.allSettled<ImageClip>(
+      files.map(async (file): Promise<ImageClip> => {
         const id = crypto.randomUUID();
         const dataUrl = await fileToDataUrl(file);
+        // Validación mínima del data URL
+        if (!dataUrl.startsWith('data:image/')) throw new Error('Invalid image data URL');
         const img = await loadImage(dataUrl);
         return {
           id,
@@ -50,7 +52,9 @@ export const useUploadStore = create<UploadState>((set, get) => ({
         } satisfies ImageClip;
       })
     );
-    const clips = [...get().clips, ...newClips];
+    const successful = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+    if (!successful.length) return; // nada que agregar si todas fallaron
+    const clips = [...get().clips, ...successful];
     set({ clips });
     await persist(clips);
   },
