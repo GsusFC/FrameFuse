@@ -38,7 +38,7 @@ const DEFAULT_WEB_APP_ORIGIN = 'https://frame-fuse-web.vercel.app'
 export const WEB_APP_ORIGIN = normalizeOrigin(ENV_WEB_APP_ORIGIN || DEFAULT_WEB_APP_ORIGIN)
 
 const ENV_API_BASE = getEnv('FFZ_API_BASE') || getEnv('VITE_API_BASE') || getEnv('API_BASE')
-export const API_BASE = ENV_API_BASE ? ENV_API_BASE.replace(/\/$/, '') : `${WEB_APP_ORIGIN}/api`
+export const API_BASE = ENV_API_BASE ? ENV_API_BASE.replace(/\/$/, '') : 'https://frame-fuse-api.vercel.app/api'
 
 export const getSlideshowUrl = (sessionId?: string) =>
   sessionId ? `${WEB_APP_ORIGIN}/slideshow?sessionId=${sessionId}` : WEB_APP_ORIGIN

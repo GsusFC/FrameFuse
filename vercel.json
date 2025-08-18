@@ -5,6 +5,7 @@
     }
   },
   "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "echo 'skip build'",
   "headers": [
     {
       "source": "/api/(.*)",
@@ -14,9 +15,5 @@
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
       ]
     }
-  ],
-  "functions": {
-    "api/**.ts": { "runtime": "nodejs20.x", "maxDuration": 30 },
-    "api/**/*.ts": { "runtime": "nodejs20.x", "maxDuration": 30 }
-  }
+  ]
 }
