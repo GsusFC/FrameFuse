@@ -79,8 +79,8 @@ function Plugin() {
   const [figmaSelection, setFigmaSelection] = useState<string[]>([]) // Frames seleccionados en Figma
   const [apiKey, setApiKey] = useState('')
   const [exportFormat, setExportFormat] = useState('JPG') // Changed to JPG for smaller file sizes
-  const [exportScale, setExportScale] = useState('1') // Changed to 1x scale to reduce file size
-  const [exportQuality, setExportQuality] = useState('0.6') // JPG quality (0.1-1.0) - Reduced for smaller files
+  const [exportScale, setExportScale] = useState('0.75') // Reduced to 0.75x for smaller files under 1MB limit
+  const [exportQuality, setExportQuality] = useState('0.4') // JPG quality (0.1-1.0) - Further reduced for Vercel limits
   const [useAbsoluteBounds, setUseAbsoluteBounds] = useState(false) // Include effects and strokes
   const [contentsOnly, setContentsOnly] = useState(false) // Export contents only
   // These states are now handled internally by ExportButton
