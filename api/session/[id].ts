@@ -3,7 +3,6 @@ import { list } from '@vercel/blob'
 // Configuración de runtime para Vercel Function
 export const config = {
   runtime: 'nodejs',
-  regions: ['iad1', 'cdg1'],
   maxDuration: 30,
 }
 

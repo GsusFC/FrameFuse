@@ -4,7 +4,6 @@ import { zipSync, strToU8 } from 'fflate'
 // Configuración de runtime para Vercel Function
 export const config = {
   runtime: 'nodejs',
-  regions: ['iad1', 'cdg1'],
   maxDuration: 30,
 }
 
