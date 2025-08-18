@@ -92,6 +92,26 @@ export function App() {
   // Escuchar mensajes del plugin de Figma
   React.useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
+      // Seguridad: validar origen del mensaje (aceptar mismo origen o figma.com)
+      try {
+        const origin = event.origin || ''
+        const sameOrigin = origin === window.location.origin
+        let isFigma = false
+        if (origin) {
+          try {
+            const host = new URL(origin).hostname
+            isFigma = host.endsWith('figma.com')
+          } catch {}
+        } else {
+          // Algunos entornos (Electron) pueden reportar origin vacío/null; permitimos si el tipo es esperado
+          isFigma = false
+        }
+        if (!(sameOrigin || isFigma)) {
+          // Ignorar mensajes de orígenes no permitidos
+          return
+        }
+      } catch {}
+
       // Verificar que el mensaje viene del plugin de Figma
       if (event.data?.type === 'figma-frames-import' && event.data?.images) {
         try {
@@ -192,7 +212,7 @@ export function App() {
       if (!ffzBuf || cancelled) return
       try {
         const unzipped = unzipSync(ffzBuf)
-        const imageEntries = Object.keys(unzipped).filter((k) => k.startsWith('images/'))
+        const imageEntries = Object.keys(unzipped).filter((k) => /\.(png|jpg|jpeg)$/i.test(k))
         const files: File[] = imageEntries.map((name) => {
           const data = unzipped[name]
           const sig = detectImageMime(data)

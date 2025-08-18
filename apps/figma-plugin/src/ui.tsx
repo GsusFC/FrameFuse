@@ -7,6 +7,7 @@ import { useState, useEffect } from 'preact/hooks'
 import { Header, APIKeyPage, FrameGrid, ExportSettings } from './components'
 import { ExportButton } from './components/ExportButton'
 import { WEB_APP_ORIGIN, API_BASE, getSlideshowUrl } from './config'
+import { FFZGenerator } from './utils/FFZGenerator'
 
 interface Frame {
   id: string
@@ -268,7 +269,7 @@ function Plugin() {
     images?: { name: string; data: number[]; width?: number; height?: number }[],
     preOpenedWindow?: Window | null
   ) => {
-    console.log('🎬 Opening slideshow (always via backend session):', url)
+    console.log('🎬 Opening slideshow (postMessage-first, backend fallback):', url)
     const finalUrl = url.startsWith('http') ? url : `https://${url}`
 
     if (!images || images.length === 0) {
@@ -281,6 +282,57 @@ function Plugin() {
       return
     }
 
+    // 1) Intento postMessage: usa la ventana pre-abierta para cargar el slideshow y enviar FFZ
+    const tryPostMessageImport = async () => {
+      try {
+        if (!preOpenedWindow) return false
+
+        // Navegar la ventana al slideshow sin sessionId (la web debe escuchar figma-ffz-import)
+        try {
+          preOpenedWindow.location.href = `${WEB_APP_ORIGIN}/slideshow`
+        } catch (navErr) {
+          console.warn('⚠️ Failed to navigate preOpenedWindow, continuing:', navErr)
+        }
+
+        // Generar FFZ desde imágenes
+        const frames = images.map((img) => ({
+          name: img.name,
+          data: new Uint8Array(img.data),
+          width: img.width ?? 1920,
+          height: img.height ?? 1080
+        }))
+        const ffz = FFZGenerator.generateFFZ(frames)
+
+        // Enviar por postMessage
+        const payload = {
+          type: 'figma-ffz-import',
+          data: {
+            ffzData: Array.from(ffz),
+            timestamp: Date.now(),
+            source: 'figma-plugin'
+          }
+        }
+        preOpenedWindow.postMessage(payload, WEB_APP_ORIGIN)
+
+        // Pequeño timeout para no bloquear; el receptor debería reconocerlo rápidamente
+        await new Promise((resolve) => setTimeout(resolve, 300))
+
+        console.log('✅ FFZ sent via postMessage to preOpenedWindow')
+        return true
+      } catch (e) {
+        console.warn('🟡 postMessage path failed, will fallback to backend:', e)
+        return false
+      }
+    }
+
+    const postMessageOk = await tryPostMessageImport()
+    if (postMessageOk) {
+      // Opcional: abrir también en navegador externo para experiencia Desktop coherente
+      try { openExternalUrl(`${WEB_APP_ORIGIN}/slideshow`) } catch {}
+      return
+    }
+
+    // 2) Fallback: subir imágenes al backend para crear sesión y abrir por sessionId
     await uploadImagesViaAPI(images)
 
     async function uploadImagesViaAPI(imgs: { name: string; data: number[]; width?: number; height?: number }[]) {
