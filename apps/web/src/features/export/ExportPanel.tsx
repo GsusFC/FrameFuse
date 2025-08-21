@@ -42,6 +42,9 @@ export function ExportPanel() {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
+  // API Configuration - GitLab (actualizar después del despliegue)
+  const API_BASE = 'https://gsusfc-group-gsusfc-project-451d11f8285b8a43cd344674bee085149f97724b.gitlab.io';
+
   function applyPreset(nextPreset: 'fast' | 'balanced' | 'quality' | 'manual', f: 'webm' | 'mp4' | 'gif') {
     if (nextPreset === 'manual') { setPreset('manual'); return; }
     setPreset(nextPreset);
@@ -219,61 +222,97 @@ export function ExportPanel() {
           <input className="border border-[var(--border)] bg-[var(--panel)] rounded px-2 py-1 w-full" value={filename} onChange={(e) => setFilename(e.target.value)} />
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="space-y-2">
+        {/* Botón único: Exportar con API optimizada */}
         <button
+          type="button"
           disabled={!clips.length || busy}
-          className="rounded border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-50"
-          onClick={async () => {
-            console.log('🎬 Iniciando exportación...');
+          className="w-full rounded border border-[var(--border)] bg-[var(--accent)] px-4 py-3 text-sm font-medium disabled:opacity-50"
+          onClick={async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (busy) return;
+            console.log('🌐 Iniciando exportación con API...');
             setBusy(true);
             setProgress(0);
             setStartTime(Date.now());
-            const ctrl = new AbortController();
-            setController(ctrl);
             try {
-              console.log('📦 Importando FFmpeg worker...');
-              const { createFfmpegWorkerExporter } = await import('@framefuse/ffmpeg-worker');
-              console.log('✅ Módulo importado, creando exporter...');
-              const exporter = createFfmpegWorkerExporter();
-              console.log('✅ Exporter creado:', exporter);
-              
-              console.log('🎥 Iniciando export con opciones:', {
-                clips: clips.length,
+              // Comprimir imágenes antes de enviar para evitar error 413
+              const compressedClips = await Promise.all(clips.map(async (clip, index) => {
+                console.log(`🗜️ Comprimiendo imagen ${index + 1}/${clips.length}...`);
+                setProgress((index + 0.5) / (clips.length * 2)); // 50% del progreso para compresión
+                
+                return new Promise<any>((resolve) => {
+                  const img = new Image();
+                  img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d')!;
+                    
+                    // Reducir resolución para optimizar payload
+                    const maxWidth = 1280;
+                    const maxHeight = 720;
+                    let { width: imgWidth, height: imgHeight } = img;
+                    
+                    if (imgWidth > maxWidth || imgHeight > maxHeight) {
+                      const ratio = Math.min(maxWidth / imgWidth, maxHeight / imgHeight);
+                      imgWidth *= ratio;
+                      imgHeight *= ratio;
+                    }
+                    
+                    canvas.width = imgWidth;
+                    canvas.height = imgHeight;
+                    ctx.drawImage(img, 0, 0, imgWidth, imgHeight);
+                    
+                    // Comprimir a JPEG con calidad 0.8
+                    const compressedData = canvas.toDataURL('image/jpeg', 0.8);
+                    resolve({
+                      imageData: compressedData,
+                      durationMs: clip.durationMs,
+                      transitionAfter: clip.transitionAfter
+                    });
+                  };
+                  img.src = clip.src;
+                });
+              }));
+
+              const project = { clips: compressedClips };
+
+              console.log('📤 Enviando proyecto a API:', {
+                clips: project.clips.length,
                 format,
                 fps,
-                width,
-                height
+                resolution: `${width || 1920}x${height || 1080}`,
+                totalSize: JSON.stringify(project).length + ' chars'
               });
-              
-              const blob = await exporter.export(
-                { clips },
-                {
+
+              setProgress(0.5); // 50% completado con compresión
+
+              const response = await fetch(`${API_BASE}/api/render`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  project,
                   format,
                   fps,
-                  width,
-                  height,
-                  scaleMode,
-                  crf,
-                  bitrateKbps: bitrate,
-                  speedPreset,
-                  keyframeInterval: keyint,
-                  gifColors,
-                  gifDither,
-                  gifLoop,
-                  gifDitherType,
-                  gifBayerScale,
-                  gifPaletteStatsMode,
-                  filename,
-                  previewSeconds,
-                  onProgress: (p: number) => {
-                    console.log('📊 Progreso:', Math.round(p * 100) + '%');
-                    setProgress(p);
-                  },
-                  signal: ctrl.signal
-                }
-              );
+                  width: width || 1920,
+                  height: height || 1080
+                })
+              });
+
+              if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`API error: ${response.status} - ${errorText}`);
+              }
+
+              console.log('✅ Respuesta de API recibida');
+              setProgress(0.8);
               
-              console.log('✅ Export completado, blob size:', blob.size);
+              const blob = await response.blob();
+              console.log('✅ Video renderizado, tamaño:', formatBytes(blob.size));
+              setProgress(1);
+              
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
@@ -286,14 +325,14 @@ export function ExportPanel() {
               alert(`Error durante la exportación: ${e instanceof Error ? e.message : 'Error desconocido'}`);
             } finally {
               setBusy(false);
-              setController(null);
               setProgress(0);
               setStartTime(null);
             }
           }}
         >
-          {busy ? 'Exportando…' : 'Exportar'}
+          {busy ? 'Exportando…' : 'Exportar Video'}
         </button>
+
         {busy && (
           <Button variant="outline" onClick={() => controller?.abort()}>Cancelar</Button>
         )}

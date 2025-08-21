@@ -1,0 +1,12 @@
+Do a deep-dive on the code and understand how [insert feature] works. Once you understand it, let me know, and I will provide the task I have for you."
+
+
+Qué te parece trasladar el funcionamiento a el mouse, me explico.
+
+Select-> space + click en bola -> scroll para controlar ball_size
+Connect -> command +  multi click  -> scroll para controlar connection_factor
+
+Que te parece. Hablemos de ello
+
+
+Si s

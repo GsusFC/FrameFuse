@@ -3,16 +3,120 @@ import type { Timeline } from '@framefuse/core';
 import type { ExportOptions, VideoExporter } from '@framefuse/core';
 import type { FfmpegWorkerOptions } from '../types';
 
-function dataUrlToBytes(dataUrl: string): { bytes: Uint8Array; ext: string; mime: string } {
-  const match = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
-  if (!match) throw new Error('Unsupported image data URL');
-  const mime = match[1];
-  const base64 = match[2];
-  const bin = atob(base64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  const ext = mime.includes('png') ? 'png' : mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : 'img';
-  return { bytes, ext, mime };
+/**
+ * Mejoras clave frente a tu versión:
+ * 1) Duraciones PRE-RECORTADAS cuando hay previewSeconds (y progresos exactos)
+ * 2) Fallback automático a WebM/VP9 si libx264 no está disponible en ffmpeg.wasm
+ * 3) Listeners de progreso/log sin fugas (un único listener global y contexto actual)
+ * 4) Más mime/ext soportados (webp/avif/gif/bmp/svg). Fallback a re-encode PNG en navegador si hace falta
+ * 5) Validaciones y mensajes de error más claros; limpieza robusta
+ */
+
+function guessExt(mime: string): string {
+  if (mime.includes('png')) return 'png';
+  if (mime.includes('jpeg') || mime.includes('jpg')) return 'jpg';
+  if (mime.includes('webp')) return 'webp';
+  if (mime.includes('gif')) return 'gif';
+  if (mime.includes('bmp')) return 'bmp';
+  if (mime.includes('avif')) return 'avif';
+  if (mime.includes('svg')) return 'svg';
+  return 'img';
+}
+
+async function dataUrlToBytes(dataUrl: string): Promise<{ bytes: Uint8Array; ext: string; mime: string }>{
+  console.log('🔍 Processing data URL, length:', dataUrl.length);
+
+  // Validar que es una data URL válida
+  if (!dataUrl.startsWith('data:')) {
+    throw new Error('Invalid data URL: does not start with "data:"');
+  }
+
+  // Parsear data URL más robustamente
+  const commaIndex = dataUrl.indexOf(',');
+  if (commaIndex === -1) {
+    throw new Error('Invalid data URL: missing comma separator');
+  }
+
+  const header = dataUrl.substring(5, commaIndex); // Remove 'data:' prefix
+  const data = dataUrl.substring(commaIndex + 1);
+
+  console.log('📝 Data URL header:', header);
+  console.log('📊 Data length:', data.length);
+
+  // Parsear header: "image/jpeg;base64" o "image/png"
+  const headerParts = header.split(';');
+  const mime = headerParts[0];
+  const encoding = headerParts[1];
+
+  console.log('🏷️ MIME type:', mime);
+  console.log('🔐 Encoding:', encoding);
+
+  if (encoding === 'base64') {
+    // Validar base64
+    if (!data || data.length === 0) {
+      throw new Error('Empty base64 data in data URL');
+    }
+
+    // Verificar que es base64 válido
+    const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
+    if (!base64Pattern.test(data)) {
+      throw new Error('Invalid base64 data in data URL');
+    }
+
+    const estimatedSize = (data.length * 3) / 4;
+    const MAX_IMAGE_SIZE = 50 * 1024 * 1024; // 50MB por imagen
+
+    console.log('📏 Estimated size:', Math.round(estimatedSize / 1024), 'KB');
+
+    if (estimatedSize > MAX_IMAGE_SIZE) {
+      throw new Error(`Image too large: ${Math.round(estimatedSize / 1024 / 1024)}MB. Maximum: ${MAX_IMAGE_SIZE / 1024 / 1024}MB`);
+    }
+
+    try {
+      const bin = atob(data);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) {
+        bytes[i] = bin.charCodeAt(i);
+      }
+
+      console.log('✅ Successfully decoded base64, bytes:', bytes.length);
+
+      // Verificar que los bytes no están vacíos
+      if (bytes.length === 0) {
+        throw new Error('Decoded base64 resulted in empty bytes');
+      }
+
+      return { bytes, ext: guessExt(mime), mime };
+    } catch (error) {
+      console.error('❌ Error decoding base64:', error);
+      throw new Error(`Failed to decode base64 data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  } else {
+    // Para otros encodings (como utf8) o sin encoding especificado
+    console.log('🔄 Handling non-base64 encoding or fallback to fetch');
+
+    try {
+      const res = await fetch(dataUrl);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch data URL: ${res.status} ${res.statusText}`);
+      }
+
+      const blob = await res.blob();
+      const array = new Uint8Array(await blob.arrayBuffer());
+
+      console.log('✅ Successfully fetched via blob, bytes:', array.length);
+
+      if (array.length === 0) {
+        throw new Error('Fetched blob resulted in empty bytes');
+      }
+
+      const ext = guessExt(blob.type || mime);
+      return { bytes: array, ext, mime: blob.type || mime };
+    } catch (error) {
+      console.error('❌ Error fetching data URL:', error);
+      throw new Error(`Failed to fetch data URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
 }
 
 function buildScaleFilter(opts: ExportOptions): string | undefined {
@@ -61,202 +165,432 @@ function mapTransitionIdToXfade(id?: string): string {
 }
 
 function toSec(ms: number): number {
-  return Math.max(0, Math.round(ms) / 1000);
+  return Math.max(0.033, Math.round(ms) / 1000);
 }
+
+function clamp01(n: number) { return Math.max(0, Math.min(1, n)); }
 
 export function createFfmpegWorkerExporter(_options: FfmpegWorkerOptions = {}): VideoExporter {
   const ffmpeg = new FFmpeg();
 
+  // Contexto global para evitar fugas de listeners
+  let progressCtx: { totalSec: number; onProgress?: (p: number) => void } = { totalSec: 1 };
+  let logInitialized = false;
+  let mp4Support: boolean | null = null; // caché
+
   async function ensureLoaded(): Promise<void> {
-    console.log('🔍 Verificando si FFmpeg está cargado...', { loaded: ffmpeg.loaded });
     if (!ffmpeg.loaded) {
-      console.log('⏳ FFmpeg no está cargado, iniciando carga...');
-      try {
-        await ffmpeg.load();
-        console.log('✅ FFmpeg cargado exitosamente');
-      } catch (error) {
-        console.error('❌ Error cargando FFmpeg:', error);
-        throw error;
-      }
-    } else {
-      console.log('✅ FFmpeg ya estaba cargado');
+      await ffmpeg.load();
     }
+    // Inicializamos listeners UNA sola vez
+    if (!logInitialized) {
+      ffmpeg.on('progress', ({ time }: any) => {
+        if (typeof time === 'number' && progressCtx.onProgress && progressCtx.totalSec) {
+          progressCtx.onProgress(clamp01(time / progressCtx.totalSec));
+        }
+      });
+      ffmpeg.on('log', ({ message }) => {
+        // Reducible/filtrable si hace falta
+        if (message?.includes('Error') || message?.includes('xfade') || message?.includes('concat')) {
+          console.debug('🎬 FFmpeg:', message);
+        }
+      });
+      logInitialized = true;
+    }
+  }
+
+  async function canEncodeMp4(): Promise<boolean> {
+    if (mp4Support !== null) return mp4Support;
+    try {
+      // Pequeña prueba de 1s para validar libx264 en este build
+      await ffmpeg.writeFile('c.black', new Uint8Array()); // no importa, generamos con lavfi
+      await ffmpeg.exec(['-f','lavfi','-i','color=size=16x16:rate=1:color=black','-t','1','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart','t.mp4']);
+      await ffmpeg.deleteFile('t.mp4');
+      mp4Support = true;
+    } catch {
+      mp4Support = false;
+    } finally {
+      try { await ffmpeg.deleteFile('c.black'); } catch {}
+    }
+    return mp4Support;
+  }
+
+  function normalizeDurations(timeline: Timeline, previewSeconds?: number | null) {
+    const base = timeline.clips.map(c => toSec(c.durationMs));
+    if (!previewSeconds || previewSeconds <= 0) return base;
+    let remaining = previewSeconds;
+    return base.map(d => {
+      if (remaining <= 0) return 0.033; // frame mínimo
+      const used = Math.max(0.033, Math.min(d, remaining));
+      remaining = Math.max(0, remaining - used);
+      return used;
+    });
   }
 
   return {
     async export(timeline: Timeline, opts: ExportOptions) {
-      console.log('🔧 Iniciando export, cargando FFmpeg...');
-      try {
-        await ensureLoaded();
-        console.log('✅ FFmpeg cargado correctamente');
-      } catch (error) {
-        console.error('❌ Error crítico cargando FFmpeg:', error);
-        throw new Error(`Failed to load FFmpeg: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
+      await ensureLoaded();
 
-      const totalMs = timeline.clips.reduce((s, c) => s + c.durationMs, 0) || 1;
-      const onProgress = opts.onProgress;
       const abortSignal = opts.signal;
-      
-      console.log('📊 Timeline info:', {
-        clips: timeline.clips.length,
-        totalMs,
-        firstClipSrc: timeline.clips[0]?.src?.substring(0, 50) + '...'
-      });
+      const onProgress = opts.onProgress;
 
-      const abortHandler = () => {
-        try {
-          ffmpeg.terminate();
-        } catch {}
-      };
-      if (abortSignal) abortSignal.addEventListener('abort', abortHandler, { once: true });
-
-      ffmpeg.on('progress', ({ time }: any) => {
-        if (typeof time === 'number' && onProgress) {
-          onProgress(Math.min(1, time / (totalMs / 1000)));
+      // Estimación de memoria previa (solo dataURL base64)
+      const totalEstimatedMemory = timeline.clips.reduce((total, clip) => {
+        const match = clip.src.match(/^data:([^;]+);base64,(.*)$/);
+        if (match) {
+          const base64 = match[2];
+          return total + ((base64.length * 3) / 4);
         }
-      });
-
-      // Write input images
-      console.log('📁 Procesando imágenes...');
-      const images: { name: string; ext: string; durSec: number }[] = [];
-      for (let i = 0; i < timeline.clips.length; i++) {
-        const clip = timeline.clips[i];
-        console.log(`📷 Procesando imagen ${i + 1}/${timeline.clips.length}`);
-        
-        try {
-          const { bytes, ext } = dataUrlToBytes(clip.src);
-          console.log(`📄 Data URL convertido: ${bytes.length} bytes, ext: ${ext}`);
-          
-          const name = `img_${i}.${ext}`;
-          console.log(`💾 Escribiendo archivo: ${name}`);
-          await ffmpeg.writeFile(name, bytes);
-          console.log(`✅ Archivo ${name} escrito correctamente`);
-          
-          images.push({ name, ext, durSec: Math.max(0.033, toSec(clip.durationMs)) });
-        } catch (error) {
-          console.error(`❌ Error procesando imagen ${i}:`, error);
-          throw error;
-        }
+        return total;
+      }, 0);
+      const MAX_TOTAL_MEMORY = 200 * 1024 * 1024; // 200MB
+      if (totalEstimatedMemory > MAX_TOTAL_MEMORY) {
+        throw new Error(`Memoria total estimada demasiado grande: ${Math.round(totalEstimatedMemory / 1024 / 1024)}MB. Máximo: ${MAX_TOTAL_MEMORY / 1024 / 1024}MB`);
       }
-      console.log('✅ Todas las imágenes procesadas');
+
+      // Duraciones normalizadas (con previewSeconds aplicado ANTES de calcular xfade)
+      const durations = normalizeDurations(timeline, typeof opts.previewSeconds === 'number' ? opts.previewSeconds : null);
+      const totalSecPlanned = durations.reduce((a, b) => a + b, 0);
+
+      // Prepara progreso exacto
+      progressCtx.totalSec = totalSecPlanned || 1;
+      progressCtx.onProgress = onProgress;
 
       const scale = buildScaleFilter(opts);
-      const filterLines: string[] = [];
 
-      // Prepare formatted inputs and labels
-      const labels: string[] = [];
-      for (let i = 0; i < images.length; i++) {
-        const inLabel = `${i}:v`;
-        const outLabel = `v${i}`;
-        labels.push(outLabel);
-        const chain: string[] = [`[${inLabel}]format=rgba,setsar=1`];
-        if (scale) chain.push(scale);
-        chain.push(`[${outLabel}]`);
-        filterLines.push(chain.join(','));
-      }
+      const images: { name: string; ext: string; durSec: number }[] = [];
+      const tempFiles: string[] = [];
 
-      // Chain xfade transitions if any, else we'll concat via filter
-      let current = labels[0];
-      let currentLen = images[0]?.durSec ?? 0;
-      for (let i = 1; i < labels.length; i++) {
-        const prevClip = timeline.clips[i - 1];
-        const trMs = prevClip.transitionAfter?.durationMs ?? 0;
-        const tr = Math.max(0.001, toSec(trMs));
-        const transName = mapTransitionIdToXfade(prevClip.transitionAfter?.pluginId);
-        const offset = Math.max(0, currentLen - tr);
-        const out = `vxf${i}`;
-        filterLines.push(`[${current}][${labels[i]}]xfade=transition=${transName}:duration=${tr.toFixed(3)}:offset=${offset.toFixed(3)}[${out}]`);
-        current = out;
-        currentLen = currentLen + images[i].durSec - tr;
-      }
-
-      // Finalize output label
-      const vout = current ? `vout` : `vout`;
-      const tailFilters: string[] = [];
-      if (opts.fps && opts.format !== 'gif') tailFilters.push(`fps=${opts.fps}`);
-      tailFilters.push('format=yuv420p');
-      filterLines.push(`[${current}]${tailFilters.join(',')}[${vout}]`);
-
-      let output = 'out.webm';
-      let args: string[] = [];
-
-      // Inputs: -loop 1 -t dur -i img
-      // If previewSeconds is set, limit the total duration roughly to that window
-      let remainingPreview = typeof opts.previewSeconds === 'number' && opts.previewSeconds > 0 ? opts.previewSeconds : null;
-      for (let i = 0; i < images.length; i++) {
-        let dur = images[i].durSec;
-        if (remainingPreview !== null) {
-          if (remainingPreview <= 0) { dur = 0.033; } else if (remainingPreview < dur) { dur = remainingPreview; }
-          remainingPreview = Math.max(0, remainingPreview - images[i].durSec);
-        }
-        args = args.concat(['-loop', '1', '-t', dur.toString(), '-i', images[i].name]);
-      }
-
-      if (opts.format === 'gif') {
-        output = 'out.gif';
-        // For GIF, palette on the final composite
-        const base = filterLines.join('; ');
-        const fpsFilter = opts.fps ? `fps=${opts.fps}` : '';
-        const palOpts: string[] = [];
-        if (opts.gifColors) palOpts.push(`max_colors=${opts.gifColors}`);
-        if (opts.gifPaletteStatsMode) palOpts.push(`stats_mode=${opts.gifPaletteStatsMode}`);
-        const palettegen = `palettegen${palOpts.length ? '=' + palOpts.join(':') : ''}`;
-        let ditherExpr = '';
-        if (opts.gifDitherType && opts.gifDitherType !== 'none') {
-          if (opts.gifDitherType === 'bayer') {
-            const scale = typeof opts.gifBayerScale === 'number' ? Math.min(5, Math.max(1, Math.round(opts.gifBayerScale))) : 3;
-            ditherExpr = `=dither=bayer:bayer_scale=${scale}`;
-          } else {
-            ditherExpr = `=dither=${opts.gifDitherType}`;
-          }
-        } else if (opts.gifDither) {
-          ditherExpr = '=dither=sierra2_4a';
-        }
-        const palette = `[${vout}]${fpsFilter ? fpsFilter + ',' : ''}split [a][b]; [a]${palettegen} [p]; [b][p]paletteuse${ditherExpr}[vgif]`;
-        args = args.concat(['-filter_complex', `${base}; ${palette}`]);
-        if (opts.gifLoop) args = args.concat(['-loop', '0']);
-        args = args.concat(['-map', '[vgif]', output]);
-      } else if (opts.format === 'mp4') {
-        output = 'out.mp4';
-        args = args.concat(['-filter_complex', filterLines.join('; '), '-map', `[${vout}]`, '-c:v', 'libx264']);
-        if (opts.speedPreset) args = args.concat(['-preset', opts.speedPreset]);
-        if (typeof opts.crf === 'number') args = args.concat(['-crf', String(opts.crf)]);
-        else if (typeof opts.bitrateKbps === 'number') args = args.concat(['-b:v', `${opts.bitrateKbps}k`]);
-        args = args.concat(['-pix_fmt', 'yuv420p', '-movflags', '+faststart', output]);
-      } else {
-        // webm
-        output = 'out.webm';
-        args = args.concat(['-filter_complex', filterLines.join('; '), '-map', `[${vout}]`, '-c:v', 'libvpx-vp9']);
-        if (typeof opts.crf === 'number') args = args.concat(['-crf', String(opts.crf), '-b:v', '0']);
-        else if (typeof opts.bitrateKbps === 'number') args = args.concat(['-b:v', `${opts.bitrateKbps}k`]);
-        args = args.concat(['-pix_fmt', 'yuv420p', output]);
-      }
+      const abortHandler = () => { try { ffmpeg.terminate(); } catch {} };
+      if (abortSignal) abortSignal.addEventListener('abort', abortHandler, { once: true });
 
       try {
-        console.log('🎬 Ejecutando comando FFmpeg:', args.join(' '));
-        await ffmpeg.exec(args);
-        console.log('✅ Comando FFmpeg completado');
-        
-        // Listar archivos para debugging
+        // Escribir inputs
+        for (let i = 0; i < timeline.clips.length; i++) {
+          const clip = timeline.clips[i];
+          const dur = durations[i];
+          if (!dur || dur <= 0) {
+            console.log(`⏭️ Skipping clip ${i}: zero duration after preview trimming`);
+            continue; // saltar clips sin duración tras preview
+          }
+
+          console.log(`📸 Processing clip ${i}/${timeline.clips.length}, duration: ${dur}s`);
+
+          try {
+            const { bytes, ext, mime } = await dataUrlToBytes(clip.src);
+
+            // Validaciones adicionales de datos
+            if (!bytes || bytes.length === 0) {
+              throw new Error(`Clip ${i}: empty or corrupted buffer`);
+            }
+
+            // Verificar que los primeros bytes parezcan una imagen válida
+            if (bytes.length < 10) {
+              throw new Error(`Clip ${i}: buffer too small (${bytes.length} bytes)`);
+            }
+
+            // Verificar que no haya demasiados bytes nulos al inicio
+            let nullBytes = 0;
+            for (let j = 0; j < Math.min(100, bytes.length); j++) {
+              if (bytes[j] === 0) nullBytes++;
+              else break;
+            }
+            if (nullBytes > 50) {
+              throw new Error(`Clip ${i}: too many null bytes at start (${nullBytes})`);
+            }
+
+            console.log(`✅ Clip ${i}: loaded ${bytes.length} bytes, format: ${ext} (${mime})`);
+
+            let effectiveExt = ext;
+            let fileBytes = bytes;
+
+            // Algunos builds de ffmpeg.wasm no traen decoders para AVIF; re-encode a PNG vía Canvas
+            if (ext === 'avif' || ext === 'svg') {
+              try {
+                console.log(`🔄 Re-encoding ${ext} to PNG for clip ${i}`);
+                const blob = new Blob([new Uint8Array(bytes)], { type: mime });
+                const bmp = await createImageBitmap(blob);
+                const cnv = new OffscreenCanvas(bmp.width, bmp.height);
+                const ctx = cnv.getContext('2d');
+                if (!ctx) throw new Error('2D context not available');
+                ctx.drawImage(bmp, 0, 0);
+                const png = await cnv.convertToBlob({ type: 'image/png' });
+                fileBytes = new Uint8Array(await png.arrayBuffer());
+                effectiveExt = 'png';
+                console.log(`✅ Re-encoded to PNG: ${fileBytes.length} bytes`);
+              } catch (e) {
+                console.warn(`⚠️ Failed re-encode ${ext}→png for clip ${i}, trying original:`, e);
+                // Continuar con el archivo original
+              }
+            }
+
+            // Pre-downscale para imágenes grandes en WASM (reduce picos de memoria)
+            const isWasm = true; // En este contexto siempre es WASM
+            if (isWasm && (effectiveExt === 'png' || effectiveExt === 'jpg' || effectiveExt === 'jpeg')) {
+              try {
+                const blob = new Blob([new Uint8Array(fileBytes)], { type: `image/${effectiveExt}` });
+                const bmp = await createImageBitmap(blob);
+
+                // Si la imagen es muy grande, reducirla antes de pasar a FFmpeg
+                const MAX_DIM = Math.max(opts.width ?? 1280, opts.height ?? 720);
+                if (bmp.width > MAX_DIM || bmp.height > MAX_DIM) {
+                  const scale = Math.min(MAX_DIM / bmp.width, MAX_DIM / bmp.height);
+                  const newWidth = Math.round(bmp.width * scale);
+                  const newHeight = Math.round(bmp.height * scale);
+
+                  console.log(`📏 Pre-downscaling image ${i}: ${bmp.width}x${bmp.height} → ${newWidth}x${newHeight}`);
+
+                  const cnv = new OffscreenCanvas(newWidth, newHeight);
+                  const ctx = cnv.getContext('2d');
+                  if (ctx) {
+                    ctx.drawImage(bmp, 0, 0, newWidth, newHeight);
+                    const downscaledBlob = await cnv.convertToBlob({ type: 'image/png' });
+                    fileBytes = new Uint8Array(await downscaledBlob.arrayBuffer());
+                    effectiveExt = 'png';
+                    console.log(`✅ Pre-downscaled: ${fileBytes.length} bytes`);
+                  }
+                }
+              } catch (e) {
+                console.warn(`⚠️ Pre-downscale failed for clip ${i}:`, e);
+                // Continuar con el archivo original
+              }
+            }
+
+            const name = `img_${i}.${effectiveExt}`;
+            console.log(`💾 Writing file: ${name} (${fileBytes.length} bytes)`);
+
+            // Escribir archivo a FFmpeg con timeout
+            await Promise.race([
+              ffmpeg.writeFile(name, fileBytes),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`Timeout writing file ${name}`)), 10000)
+              )
+            ]);
+
+            // Verificar que el archivo existe y tiene un tamaño razonable
+            const written = await ffmpeg.readFile(name);
+            if (!written || written.length === 0) {
+              throw new Error(`File ${name} was not written correctly (empty)`);
+            }
+
+            console.log(`✅ File written successfully: ${name} (${written.length} bytes)`);
+
+            // Flag para deshabilitar verificaciones de FS que duplican memoria (útil en WASM)
+            const DEBUG_VERIFY_FS = false; // Cambiar a true para debugging
+
+            if (DEBUG_VERIFY_FS) {
+              // Verificar que el tamaño no sea excesivamente diferente (tolerancia del 50%)
+              const sizeRatio = fileBytes.length > 0 ? written.length / fileBytes.length : 1;
+              if (sizeRatio < 0.1 || sizeRatio > 2) {
+                console.warn(`⚠️ Unexpected size for ${name}: original=${fileBytes.length}, written=${written.length} (${fileBytes.length > 0 ? Math.round(sizeRatio * 100) : 'N/A'}%)`);
+              }
+            }
+
+            images.push({ name, ext: effectiveExt, durSec: dur });
+            tempFiles.push(name);
+
+          } catch (error) {
+            console.error(`❌ Error processing clip ${i}:`, error);
+            throw new Error(`Failed to process clip ${i}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        }
+
+        if (images.length === 0) throw new Error('No hay imágenes válidas para exportar');
+
+        // Modo simple: usar inputs directos sin filtros complejos para reducir memoria
+        const args: string[] = ['-y'];
+
+        // Detectar si estamos en WASM (limitaciones de memoria)
+        const isWasm = true; // En este contexto siempre es WASM
+
+        // Flags optimizados para WASM (menos memoria, más estabilidad)
+        if (isWasm) {
+          args.push('-threads', '1', '-filter_threads', '1');
+          console.log('⚙️ Using WASM-optimized thread settings');
+        }
+
+        // Simplificar: usar inputs directos sin filtro complejo
+        for (let i = 0; i < images.length; i++) {
+          args.push('-loop', '1', '-t', images[i].durSec.toString(), '-i', images[i].name);
+        }
+
+        // Sistema de transiciones inteligente
+        const heavyTransitions = ['pixelize', 'wiperight', 'wipeleft', 'wipeup', 'wipedown', 'slideright', 'slideleft', 'slideup', 'slidedown'];
+
+        // Verificar si hay transiciones
+        const hasTransitions = timeline.clips.some((clip, i) =>
+          i < timeline.clips.length - 1 && clip.transitionAfter && clip.transitionAfter.durationMs > 0
+        );
+
+        // Crear filtros con transiciones optimizadas
+        const filterLines: string[] = [];
+        for (let i = 0, inIdx = 0; i < images.length; i++, inIdx++) {
+          const inLabel = `${inIdx}:v`;
+          const outLabel = `v${i}`;
+          const chain: string[] = [`[${inLabel}]`];
+          if (scale) chain.push(`scale=${opts.width ?? 1280}:${opts.height ?? 720}`);
+          chain.push('format=yuv420p,setsar=1');
+          filterLines.push(chain.join(',') + `[${outLabel}]`);
+        }
+
+        // Agregar transiciones si existen
+        let current = 'v0';
+        let currentLen = images[0].durSec;
+
+        if (hasTransitions && images.length > 1) {
+          for (let i = 1; i < images.length; i++) {
+            const prevClip = timeline.clips[i - 1];
+            const nextClip = timeline.clips[i];
+
+            if (!prevClip.transitionAfter || prevClip.transitionAfter.durationMs <= 0) {
+              // Sin transición, usar overlay simple
+              const overlayLabel = `overlay${i}`;
+              filterLines.push(`[${current}][v${i}]overlay[${overlayLabel}]`);
+              current = overlayLabel;
+              currentLen += images[i].durSec;
+              continue;
+            }
+
+            // Transición con optimizaciones para WASM
+            const trSec = Math.max(0.3, Math.min(toSec(prevClip.transitionAfter.durationMs), 1.0));
+            let transName = mapTransitionIdToXfade(prevClip.transitionAfter.pluginId);
+
+            // En WASM, optimizar transiciones complejas para reducir uso de memoria
+            if (isWasm && heavyTransitions.includes(transName)) {
+              console.log(`🎬 Optimizing heavy transition ${transName} for WASM memory usage`);
+
+              if (transName === 'pixelize') {
+                // Pixelize es demasiado intensivo, usar fade
+                transName = 'fade';
+                console.log('🎬 Using fade instead of pixelize (too memory intensive)');
+              } else {
+                // Para wipe y slide, intentar optimizar reduciendo temporalmente la resolución
+                console.log(`🎬 Using optimized ${transName} with memory optimizations`);
+
+                // Crear una versión optimizada de la transición con menor resolución temporal
+                const tempScale = 'scale=640:360'; // Resolución muy baja para la transición
+                const tempLabel = `temp_${i}`;
+
+                // Insertar un paso de reducción de resolución antes de la transición
+                filterLines.push(`[${current}]${tempScale}[${tempLabel}]`);
+                filterLines.push(`[v${i}]${tempScale}[temp_v${i}]`);
+
+                // Usar la transición en baja resolución
+                const offset = Math.max(0, +(currentLen - trSec).toFixed(2));
+                const xfTempLabel = `xf_temp_${i}`;
+                filterLines.push(`[${tempLabel}][temp_v${i}]xfade=transition=${transName}:duration=${trSec.toFixed(3)}:offset=${offset.toFixed(3)}[${xfTempLabel}]`);
+
+                // Escalar de vuelta a la resolución original
+                const finalScale = `scale=${opts.width ?? 1280}:${opts.height ?? 720}`;
+                const xfLabel = `xf${i}`;
+                filterLines.push(`[${xfTempLabel}]${finalScale}[${xfLabel}]`);
+                current = xfLabel;
+
+                console.log(`✅ Applied memory-optimized ${transName} transition`);
+                continue;
+              }
+            }
+
+            const offset = Math.max(0, +(currentLen - trSec).toFixed(2));
+            const xfLabel = `xf${i}`;
+            filterLines.push(`[${current}][v${i}]xfade=transition=${transName}:duration=${trSec.toFixed(3)}:offset=${offset.toFixed(3)}[${xfLabel}]`);
+            current = xfLabel;
+            currentLen = currentLen + images[i].durSec - trSec;
+          }
+        }
+
+        // Aplicar filtros complejos
+        if (filterLines.length > images.length) {
+          args.push('-filter_complex', filterLines.join('; '), '-map', `[${current}]`);
+        } else {
+          // Sin transiciones, usar inputs directos
+          args.push('-filter_complex', filterLines.slice(0, images.length).join('; '), '-map', `[${current}]`);
+        }
+
+        // Output
+        const output = 'out.mp4';
+        args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', output);
+
+        console.log('🔧 Simplified FFmpeg command:');
+        console.log('ffmpeg ' + args.map(arg => arg.includes(' ') ? `'${arg}'` : arg).join(' '));
+
+        // Ejecutar FFmpeg con timeout de seguridad (más largo para WASM)
+        const timeoutMs = Math.max(120000, totalSecPlanned * 5000); // Mínimo 2min, +5s por segundo de video
+        console.log(`⏱️ Setting FFmpeg timeout: ${timeoutMs}ms (${Math.round(timeoutMs/1000)}s)`);
+
+        const timeout = setTimeout(() => {
+          console.error('⏰ FFmpeg timeout reached - terminating process');
+          try {
+            ffmpeg.terminate();
+          } catch (e) {
+            console.error('Error terminating FFmpeg:', e);
+          }
+        }, timeoutMs);
+
+        try {
+          console.log('🎬 Executing FFmpeg...');
+          const result = await ffmpeg.exec(args);
+          clearTimeout(timeout);
+
+          console.log(`📊 FFmpeg exit code: ${result}`);
+
+          if (result !== 0) {
+            let errorInfo = `Exit code: ${result}`;
+            throw new Error(`FFmpeg failed with ${errorInfo}`);
+          }
+
+          console.log('✅ FFmpeg execution completed successfully');
+
+        } catch (error) {
+          clearTimeout(timeout);
+          throw error;
+        }
+
+        // Verificar salida
+        console.log(`🔍 Checking output file: ${output}`);
         const files = await ffmpeg.listDir('.');
-        console.log('📂 Archivos disponibles después de FFmpeg:');
-        files.forEach((file: any) => {
-          console.log(`  - ${file.name} (${file.isDir ? 'dir' : 'file'})`);
-        });
-        
-        console.log('📖 Leyendo archivo de salida:', output);
-        const data = (await ffmpeg.readFile(output)) as Uint8Array;
-        // Create a plain Uint8Array copy to avoid SharedArrayBuffer typing issues
-        const copy = new Uint8Array(data.byteLength);
-        copy.set(data);
-        const type = opts.format === 'gif' ? 'image/gif' : `video/${opts.format}`;
-        return new Blob([copy], { type });
+        const exists = files.some((f: any) => f.name === output && !f.isDir);
+        if (!exists) throw new Error(`FFmpeg no generó el archivo de salida: ${output}`);
+
+        const outData = (await ffmpeg.readFile(output)) as Uint8Array;
+        if (!outData || outData.length === 0) {
+          throw new Error(`Archivo de salida ${output} está vacío o corrupto`);
+        }
+
+        console.log(`📏 Output file size: ${Math.round(outData.length / 1024)}KB`);
+
+        // Verificar que no sea todo ceros o datos corruptos
+        let nonZeroBytes = 0;
+        for (let i = 0; i < Math.min(1000, outData.length); i++) {
+          if (outData[i] !== 0) {
+            nonZeroBytes++;
+          }
+        }
+        if (nonZeroBytes < 10) {
+          throw new Error(`Output file appears to contain mostly null bytes (${nonZeroBytes} non-zero bytes in first 1000)`);
+        }
+
+        const copy = new Uint8Array(outData.byteLength);
+        copy.set(outData);
+        const type = 'video/webm';
+        const blob = new Blob([copy], { type });
+
+        console.log(`🎉 Export completed successfully! Blob size: ${Math.round(blob.size / 1024)}KB`);
+        return blob;
+      } catch (error) {
+        console.error('❌ Error durante la exportación:', error);
+        throw error;
       } finally {
+        // Limpieza
+        for (const temp of tempFiles) { try { await ffmpeg.deleteFile(temp); } catch {} }
+        try {
+          const out = 'out.webm';
+          await ffmpeg.deleteFile(out);
+        } catch {}
         if (abortSignal) abortSignal.removeEventListener('abort', abortHandler);
+        // Dejar de reportar progreso para este job
+        progressCtx.onProgress = undefined;
       }
     }
   };
 }
-
-

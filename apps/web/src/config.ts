@@ -25,4 +25,4 @@ function normalizeBase(urlLike: string): string {
 }
 
 const ENV_API_BASE = getEnv('FFZ_API_BASE') || getEnv('VITE_API_BASE') || getEnv('API_BASE')
-export const API_BASE = ENV_API_BASE ? normalizeBase(ENV_API_BASE) : 'https://frame-fuse-api.vercel.app/api'
+export const API_BASE = ENV_API_BASE ? normalizeBase(ENV_API_BASE) : 'https://framefuse-rdmlsa0bx-gsus-projects.vercel.app/api'

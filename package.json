@@ -19,7 +19,9 @@
   },
   "dependencies": {
     "@vercel/blob": "^1.1.1",
-    "fflate": "^0.8.2"
+    "fflate": "^0.8.2",
+    "sharp": "^0.33.4",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.8.0",
