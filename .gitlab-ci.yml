@@ -1,57 +1,60 @@
-# GitLab CI/CD Pipeline para FrameFuse API
-image: docker:20.10.16
+# GitLab CI/CD Pipeline para FrameFuse API (GitLab Pages)
+image: node:18-alpine
 
-services:
-  - docker:20.10.16-dind
-
-variables:
-  DOCKER_DRIVER: overlay2
-  DOCKER_TLS_CERTDIR: "/certs"
-  
 stages:
   - build
   - test
   - deploy
 
+# Instalar FFmpeg en todos los jobs
 before_script:
-  - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  - apk add --no-cache ffmpeg curl
+  - node --version
+  - npm --version
+  - ffmpeg -version
 
-# Build de la imagen Docker
-build:
+# Build de la API
+build_api:
   stage: build
   script:
-    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
-    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-  only:
-    - main
-    - develop
+    - echo "🏗️ Building FrameFuse API..."
+    - cd api
+    - npm install
+    - echo "✅ API built successfully"
+  artifacts:
+    paths:
+      - api/node_modules/
+    expire_in: 1 hour
 
-# Test básico de la API
-test_api:
+# Test de FFmpeg y API básico
+test_ffmpeg:
   stage: test
-  image: node:18-alpine
-  before_script:
-    - apk add --no-cache ffmpeg curl
-    - cd api && npm install
+  dependencies:
+    - build_api
   script:
-    - echo "🧪 Ejecutando tests de API..."
-    - node -e "console.log('✅ API tests completados')"
-  only:
-    - main
-    - develop
+    - echo "🧪 Testing FFmpeg availability..."
+    - ffmpeg -version
+    - echo "🧪 Testing Node.js and dependencies..."
+    - cd api
+    - node -e "console.log('✅ Node.js working')"
+    - npm list --depth=0
+    - echo "✅ Tests passed"
 
-# Deploy a producción usando GitLab Container Registry
-deploy_production:
+# Deploy usando GitLab Pages
+pages:
   stage: deploy
+  dependencies:
+    - build_api
   script:
-    - echo "🚀 Desplegando a producción..."
-    - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-    - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:latest
-    - docker push $CI_REGISTRY_IMAGE:latest
-    - echo "✅ Despliegue completado"
-    - echo "🌐 API disponible en: https://$CI_PROJECT_PATH_SLUG-$CI_PROJECT_ID.gitlab.io"
-  only:
-    - main
+    - echo "🚀 Deploying FrameFuse API to GitLab Pages..."
+    - mkdir -p public
+    - cp -r api/* public/
+    - echo "✅ API deployed to GitLab Pages"
+  artifacts:
+    paths:
+      - public
   environment:
     name: production
-    url: https://$CI_PROJECT_PATH_SLUG-$CI_PROJECT_ID.gitlab.io
+    url: https://$CI_PROJECT_NAMESPACE.gitlab.io/$CI_PROJECT_NAME
+  only:
+    - main
