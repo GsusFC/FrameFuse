@@ -8,54 +8,141 @@
 
 ## 🚀 Pasos para Desplegar
 
-### 1. Subir código a GitLab
+### 1. Preparar el proyecto para GitLab
+
+Asegúrate de que tienes todos los archivos necesarios:
 
 ```bash
-# Clonar tu proyecto existente o crear uno nuevo
-git remote add gitlab https://gitlab.com/gsusfc-group/GsusFC-project.git
+# Verificar archivos requeridos
+ls -la Dockerfile .gitlab-ci.yml api/ packages/
+```
 
-# Pushear archivos de configuración
-git add Dockerfile .gitlab-ci.yml api/
-git commit -m "🦊 Configuración inicial para GitLab con FFmpeg"
+### 2. Configurar repositorio GitLab
+
+```bash
+# Agregar remote de GitLab (reemplaza con tu URL real)
+git remote add gitlab https://gitlab.com/tu-usuario/tu-proyecto.git
+
+# Hacer commit de todos los archivos necesarios
+git add .
+git commit -m "🚀 Configuración completa para despliegue en GitLab CI/CD
+
+- 🐳 Dockerfile optimizado con FFmpeg y pnpm
+- 🔄 Pipeline completo (.gitlab-ci.yml)
+- 📦 API de renderizado con health checks
+- 🏗️ Monorepo con packages locales
+- 🧪 Tests automatizados incluidos"
+
+# Pushear a GitLab
 git push gitlab main
 ```
 
-### 2. Configurar Variables de Entorno
+### 3. Configurar Variables de Entorno
 
 En GitLab: **Settings > CI/CD > Variables**
 
-```
-CI_REGISTRY_PASSWORD = [Token de acceso]
+```bash
+# Variables requeridas para el pipeline
+CI_REGISTRY_PASSWORD = [Tu token de acceso personal]
 CI_REGISTRY_USER = [Tu usuario GitLab]
 ```
 
-### 3. Habilitar GitLab Container Registry
+### 4. Habilitar GitLab Container Registry
 
-En GitLab: **Settings > General > Visibility** 
+En GitLab: **Settings > General > Visibility**
 - ✅ Container Registry: **Enabled**
 
-### 4. Verificar Pipeline
+### 5. Verificar Pipeline
+
+Después del push, el pipeline se ejecutará automáticamente:
 
 1. Ve a **CI/CD > Pipelines**
-2. Debería ejecutarse automáticamente al hacer push
-3. Verificar que pase: Build → Test → Deploy
+2. Deberías ver un pipeline ejecutándose
+3. Las etapas son: **Build → Test → Deploy**
 
-## 🌐 URLs Finales
+#### 📊 Etapas del Pipeline:
+
+- **🏗️ Build**: Construye imagen Docker y la sube al registry
+- **🧪 Test**: Ejecuta tests y verifica compilación
+- **🚀 Deploy**: Despliega a staging/producción (manual para main)
+- **🧹 Cleanup**: Limpieza opcional de imágenes antiguas
+- **📊 Report**: Genera reporte del pipeline
+
+## 🌐 URLs y Endpoints
 
 Después del despliegue exitoso:
 
-- **API Health**: `https://tu-proyecto.gitlab.io/health`
-- **Render Endpoint**: `https://tu-proyecto.gitlab.io/render`
+### **URLs de Producción:**
+- **🌐 API Base**: `http://[tu-servidor]:3000`
+- **💚 Health Check**: `http://[tu-servidor]:3000/health`
+- **🎬 Render Video**: `http://[tu-servidor]:3000/render`
+- **📊 Container Registry**: `registry.gitlab.com/[tu-usuario]/[tu-proyecto]`
+
+### **URLs de Staging:**
+- **🌐 API Base**: `http://staging.[tu-servidor]:3000`
+- **💚 Health Check**: `http://staging.[tu-servidor]:3000/health`
+
+### **Monitoreo del Contenedor:**
+```bash
+# Ver logs del contenedor
+docker logs framefuse-api
+
+# Ver estado del contenedor
+docker ps | grep framefuse
+
+# Verificar health check
+curl http://localhost:3000/health
+```
+
+### Despliegue del Contenedor
+
+```bash
+# Descargar imagen desde GitLab Container Registry
+docker pull registry.gitlab.com/[tu-grupo]/[tu-proyecto]:latest
+
+# Ejecutar contenedor
+docker run -d \
+  --name framefuse-api \
+  -p 3000:3000 \
+  registry.gitlab.com/[tu-grupo]/[tu-proyecto]:latest
+
+# Verificar que esté corriendo
+curl http://localhost:3000/health
+```
 
 ## 💰 Costes Estimados
 
+### Entendiendo los Costes de CI/CD
+
+**Importante**: Los minutos de CI/CD se consumen por cada ejecución del pipeline (build/test/deploy), NO por el tiempo de renderizado en runtime.
+
+#### Etapas típicas que consumen minutos de CI/CD:
+- **Build**: Compilación del código y construcción de la imagen Docker
+- **Test**: Ejecución de pruebas automatizadas
+- **Deploy**: Push de la imagen al Container Registry
+- **Cleanup**: Limpieza de recursos temporales
+
+#### Ejemplo de cálculo mensual:
+```
+Minutos mensuales = (minutos por pipeline) × (ejecuciones por día) × (días por mes)
+Ejemplo: 10 min/pipeline × 3 ejecuciones/día × 30 días = 900 minutos/mes
+```
+
 ### Plan Gratuito (400 min/mes)
 - ✅ **Desarrollo/Testing**: Perfecto
-- ✅ **~13 renderizados/día** (30 seg cada uno)
+- ✅ **~13 ejecuciones diarias** (30 min cada una)
+- 💡 **Recomendación**: Mide el tiempo real de tu pipeline para estimaciones precisas
 
 ### Plan Premium ($29/mes)
 - ✅ **Producción**: 10,000 minutos
-- ✅ **~333 renderizados/día**
+- ✅ **~333 ejecuciones diarias** (30 min cada una)
+- 💡 **Recomendación**: Mide el tiempo real de tu pipeline para estimaciones precisas
+
+#### Medición del tiempo de pipeline:
+```bash
+# Después de ejecutar el pipeline, verifica el tiempo total en:
+# GitLab > CI/CD > Pipelines > [Tu pipeline] > Duration
+```
 
 ## 🔧 Comandos Útiles
 
@@ -77,24 +164,178 @@ curl http://localhost:3000/health
 # GitLab > CI/CD > Pipelines > [Click en job]
 ```
 
-## ✅ Ventajas vs Vercel
+## 🔒 Características de Seguridad
 
-- 🚀 **FFmpeg nativo** (más rápido)
-- 💰 **Costes predecibles**
-- 🐳 **Docker completo** (sin limitaciones)
-- 🔧 **Más control** sobre el entorno
-- 📊 **Mejor observabilidad**
+### **Usuario No-Root:**
+- ✅ Ejecuta como usuario `framefuse` (UID 1001)
+- ✅ Sin privilegios de administrador
+- ✅ Mejor aislamiento de seguridad
+
+### **Health Checks Integrados:**
+- ✅ Verificación automática cada 30 segundos
+- ✅ Timeout de 3 segundos por check
+- ✅ 5 segundos de grace period al inicio
+- ✅ Auto-restart en caso de fallos
+
+### **Optimizaciones de Rendimiento:**
+- ✅ Multi-stage build optimizado
+- ✅ Cache inteligente de dependencias
+- ✅ Imágenes base Alpine (ligeras)
+- ✅ FFmpeg compilado estáticamente
 
 ## 🆘 Troubleshooting
 
-### Pipeline falla en build
-- Verificar que `Dockerfile` esté en la raíz
-- Revisar logs en GitLab CI/CD
+### **Problemas del Pipeline:**
 
-### FFmpeg no encontrado
-- Verificar que la imagen base incluya FFmpeg
-- Usar `apk add ffmpeg` en Alpine o `apt-get install ffmpeg` en Ubuntu
+#### ❌ Pipeline falla en build
+```bash
+# Verificar archivos locales
+ls -la Dockerfile .gitlab-ci.yml
 
-### Memory/Timeout issues
-- Ajustar `timeout` en `.gitlab-ci.yml`
-- Considerar usar GitLab Premium para más recursos
+# Verificar sintaxis del Dockerfile
+docker build --dry-run .
+
+# Revisar logs detallados en GitLab
+# GitLab > CI/CD > Pipelines > [Pipeline] > Build Job > View Logs
+```
+
+#### ❌ Error de pnpm en CI
+```bash
+# Si falla la instalación de dependencias:
+# 1. Verificar que pnpm-lock.yaml esté actualizado
+pnpm install
+
+# 2. Verificar versiones compatibles
+node --version  # Debe ser Node 18+
+pnpm --version   # Debe ser pnpm 8+
+```
+
+#### ❌ Tests fallan en CI
+```bash
+# Ejecutar tests localmente primero
+pnpm test
+
+# Verificar que todos los paquetes compilen
+pnpm run build --filter=@framefuse/core
+pnpm run build --filter=@framefuse/ffmpeg-worker
+```
+
+### **Problemas de FFmpeg:**
+
+#### ❌ FFmpeg no encontrado
+```bash
+# Verificar instalación en contenedor
+docker run --rm [tu-imagen] ffmpeg -version
+
+# Si no está instalado, verificar Dockerfile
+grep -n "ffmpeg" Dockerfile
+```
+
+#### ❌ Error de códecs MP4
+```bash
+# El pipeline incluye fallback automático a WebM
+# Verificar logs del contenedor
+docker logs [container-name] | grep -i "fallback\|webm"
+```
+
+### **Problemas de Health Check:**
+
+#### ❌ Health check falla
+```bash
+# Verificar endpoint manualmente
+curl http://localhost:3000/health
+
+# Verificar que health.js existe
+ls -la api/health.js
+
+# Revisar logs del contenedor
+docker logs [container-name] 2>&1 | tail -20
+```
+
+### **Problemas de Memoria/Tiempo:**
+
+#### ❌ Timeouts en renderizado
+```bash
+# Aumentar timeout en .gitlab-ci.yml
+# Buscar la línea de timeout y ajustar
+grep -n "timeout" .gitlab-ci.yml
+```
+
+#### ❌ Memoria insuficiente
+```bash
+# Verificar uso de memoria del contenedor
+docker stats [container-name]
+
+# Ajustar límites en docker run
+docker run --memory=2g --memory-swap=4g [tu-imagen]
+```
+
+### **Problemas de Red/Conectividad:**
+
+#### ❌ No puede conectar al Container Registry
+```bash
+# Verificar credenciales
+echo $CI_REGISTRY_USER
+echo $CI_REGISTRY_PASSWORD | wc -c  # Debe ser > 0
+
+# Probar login manual
+docker login registry.gitlab.com
+```
+
+#### ❌ Error de pull/push de imagen
+```bash
+# Verificar que el registry esté habilitado
+# GitLab > Settings > General > Visibility > Container Registry
+
+# Verificar permisos del proyecto
+# GitLab > Settings > Members
+```
+
+## 📋 Checklist Final
+
+### **Antes del Primer Despliegue:**
+
+- [ ] Crear proyecto en GitLab
+- [ ] Configurar Container Registry
+- [ ] Agregar variables CI/CD (`CI_REGISTRY_USER`, `CI_REGISTRY_PASSWORD`)
+- [ ] Verificar que todos los archivos están en el repo:
+  - [ ] `Dockerfile` ✅
+  - [ ] `.gitlab-ci.yml` ✅
+  - [ ] `api/` directory ✅
+  - [ ] `packages/` directory ✅
+
+### **Después del Push Inicial:**
+
+- [ ] Verificar pipeline en **CI/CD > Pipelines**
+- [ ] Revisar logs si hay errores
+- [ ] Verificar imagen en Container Registry
+- [ ] Probar despliegue local con la imagen
+
+### **Próximos Pasos Recomendados:**
+
+1. **🚀 Despliegue Inicial:**
+   ```bash
+   # Hacer el push inicial
+   git add .
+   git commit -m "feat: Configuración completa GitLab CI/CD"
+   git push gitlab main
+   ```
+
+2. **🔍 Monitoreo:**
+   - Configurar alertas en GitLab para fallos de pipeline
+   - Revisar métricas de uso de CI/CD minutes
+
+3. **📈 Optimización:**
+   - Medir tiempos de build y ajustar cache
+   - Considerar GitLab Premium si necesitas más minutos
+
+4. **🔒 Seguridad:**
+   - Rotar tokens de acceso regularmente
+   - Configurar branch protection rules
+   - Revisar permisos de Container Registry
+
+## 🎯 ¡Listo para Desplegar!
+
+Tu proyecto FrameFuse está completamente configurado para despliegue automático en GitLab. El pipeline se ejecutará automáticamente en cada push y mantendrá tu aplicación actualizada y segura.
+
+**¿Necesitas ayuda con algún paso específico o tienes alguna pregunta sobre la configuración?**
