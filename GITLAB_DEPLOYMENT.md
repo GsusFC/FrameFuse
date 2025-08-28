@@ -291,6 +291,59 @@ docker login registry.gitlab.com
 # GitLab > Settings > Members
 ```
 
+## 🤖 Integración con GitLab Duo (MCP)
+
+### **¿Qué es MCP?**
+El **Model Context Protocol** es un estándar abierto que conecta asistentes de IA con herramientas y fuentes de datos existentes.
+
+### **Beneficios para FrameFuse:**
+
+#### **🚀 IA en el Desarrollo:**
+- **Análisis inteligente del pipeline** - GitLab Duo puede detectar cuellos de botella automáticamente
+- **Optimizaciones de build** - Sugerencias para mejorar tiempos de compilación
+- **Detección de vulnerabilidades** - Escaneo automático de seguridad en contenedores
+- **Monitoreo de rendimiento** - Análisis de métricas de la API en tiempo real
+
+#### **📊 Datos Contextuales:**
+- **Métricas del pipeline** - Historial de builds y tiempos de ejecución
+- **Información del registry** - Estado de imágenes Docker y vulnerabilidades
+- **Logs de despliegue** - Análisis automático de errores y problemas
+- **Rendimiento de la API** - Monitoreo de endpoints y tiempos de respuesta
+
+#### **🔧 Automatización Inteligente:**
+```bash
+# GitLab Duo puede sugerir automáticamente:
+✅ "Optimiza el cache de node_modules para reducir builds en 40%"
+✅ "Usa Docker layer caching para builds más rápidos"
+✅ "Actualiza FFmpeg a versión más reciente para mejor compatibilidad"
+✅ "Implementa health checks más frecuentes para mejor estabilidad"
+```
+
+### **🛠️ Configuración MCP:**
+
+#### **1. Habilitar GitLab Duo:**
+```bash
+# En tu proyecto GitLab:
+Settings > GitLab Duo > Enable GitLab Duo features
+```
+
+#### **2. Configurar MCP Server:**
+```bash
+# Instalar dependencias MCP (opcional):
+pnpm add @modelcontextprotocol/sdk
+
+# Ejecutar MCP server localmente:
+node scripts/framefuse-mcp-server.js
+```
+
+#### **3. Conectar con GitLab Duo:**
+```bash
+# En GitLab Duo Chat, menciona tu proyecto:
+"Analiza el rendimiento del pipeline de FrameFuse"
+"¿Cómo puedo optimizar el build de Docker?"
+"Revisa vulnerabilidades en la imagen del registry"
+```
+
 ## 📋 Checklist Final
 
 ### **Antes del Primer Despliegue:**

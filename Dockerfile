@@ -28,10 +28,14 @@ RUN pnpm install --frozen-lockfile --prod=false
 # Copiar código fuente
 COPY api/ ./api/
 COPY packages/ ./packages/
+COPY scripts/ ./scripts/
 
 # Construir paquetes locales
 RUN pnpm run build --filter=@framefuse/core
 RUN pnpm run build --filter=@framefuse/ffmpeg-worker
+
+# Instalar dependencias del MCP server (opcional)
+RUN pnpm add @modelcontextprotocol/sdk --save-optional
 
 # Crear usuario no-root para seguridad
 RUN addgroup -g 1001 -S nodejs
@@ -41,11 +45,11 @@ RUN adduser -S framefuse -u 1001
 RUN chown -R framefuse:nodejs /app
 USER framefuse
 
-# Health check
+# Health check mejorado
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node api/health.js || exit 1
 
-# Exponer puerto
+# Exponer puertos
 EXPOSE 3000
 
 # Comando para iniciar la aplicación
