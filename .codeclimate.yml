@@ -1,0 +1,121 @@
+# 🔍 CodeClimate Configuration for FrameFuse
+# Configuración de calidad de código optimizada para TypeScript/Node.js
+
+version: "2"
+
+# Configuración general
+checks:
+  # Reglas de TypeScript
+  typescript:
+    enabled: true
+    config:
+      # Configuración de ESLint para TypeScript
+      parser: "@typescript-eslint/parser"
+      plugins:
+        - "@typescript-eslint"
+      extends:
+        - "eslint:recommended"
+        - "@typescript-eslint/recommended"
+      rules:
+        # Reglas específicas para FrameFuse
+        "@typescript-eslint/no-unused-vars": "error"
+        "@typescript-eslint/no-explicit-any": "warn"
+        "@typescript-eslint/explicit-function-return-type": "off"
+        "@typescript-eslint/no-empty-function": "warn"
+
+  # Reglas de Node.js
+  node:
+    enabled: true
+
+  # Reglas de seguridad
+  security:
+    enabled: true
+
+# Análisis de archivos
+include:
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.js"
+  - "**/*.jsx"
+  - "package.json"
+  - "tsconfig.json"
+
+exclude:
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/*.test.*"
+  - "**/*.spec.*"
+  - "**/coverage/**"
+
+# Configuración específica por directorio
+engines:
+  # ESLint para JavaScript/TypeScript
+  eslint:
+    enabled: true
+    channel: "eslint-9"
+    config:
+      config: "eslint.config.js"
+
+  # TypeScript compiler
+  typescript:
+    enabled: true
+    channel: "beta"
+    config:
+      config: "tsconfig.json"
+
+  # Node.js security
+  nodesecurity:
+    enabled: true
+
+  # Docker best practices
+  dockerfile:
+    enabled: true
+    config:
+      dockerfile: "Dockerfile"
+
+# Umbrales de calidad
+ratings:
+  paths:
+    - "src/**"
+    - "packages/**"
+    - "api/**"
+
+# Configuración de duplicación de código
+duplication:
+  enabled: true
+  config:
+    languages:
+      - typescript
+      - javascript
+
+# Configuración de complejidad
+complexity:
+  enabled: true
+  config:
+    threshold: 10  # Umbral de complejidad ciclomática
+
+# Configuración de cobertura (si se implementa)
+coverage:
+  enabled: false  # Habilitar cuando se implemente cobertura
+  config:
+    threshold: 80  # Cobertura mínima requerida (%)
+
+# Plugins adicionales para análisis específico
+plugins:
+  # Análisis de dependencias
+  dependency-check:
+    enabled: true
+
+  # Análisis de licencias
+  license-finder:
+    enabled: true
+
+  # Análisis de vulnerabilidades
+  brakeman:
+    enabled: false  # Solo para Ruby, deshabilitado
+
+# Preparación del análisis
+prepare:
+  fetch:
+    - url: "https://raw.githubusercontent.com/framefuse/style-guide/main/.eslintrc.js"
+      path: ".eslintrc.js"
