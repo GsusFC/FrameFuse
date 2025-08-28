@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Timeline, ExportOptions } from '@framefuse/core';
 
+// Type declarations for web APIs in test environment
+declare const global: any;
+
 // ✅ Mock mejorado de FFmpeg que simula la creación de archivos de salida
 vi.mock('@ffmpeg/ffmpeg', () => {
   const FFmpegMock = vi.fn().mockImplementation(() => ({
@@ -241,7 +244,10 @@ describe('createFfmpegWorkerExporter', () => {
       });
       
       // El callback de progreso debería ser llamado al menos una vez
-      expect(progressSpy).toBeDefined();
+      // El callback de progreso debería ser llamado al menos una vez
+      expect(progressSpy).toHaveBeenCalled();
+      // Opcionalmente, verificar que se llamó con valores de progreso válidos
+      expect(progressSpy).toHaveBeenCalledWith(expect.any(Number));
     });
   });
 });

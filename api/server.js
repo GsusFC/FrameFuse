@@ -93,12 +93,12 @@ app.post('/render', async (req, res) => {
 
     for (let i = 0; i < processedClips.length; i++) {
       const clip = processedClips[i];
-      concatContent += `file '${clip.inputPath}'\\n`;
-      concatContent += `duration ${clip.duration}\\n`;
+      concatContent += `file '${clip.inputPath}'\n`;
+      concatContent += `duration ${clip.duration}\n`;
     }
 
     // Agregar el último archivo sin duration adicional
-    concatContent += `file '${processedClips[processedClips.length - 1].inputPath}'\\n`;
+    concatContent += `file '${processedClips[processedClips.length - 1].inputPath}'\n`;
 
     await fs.writeFile(concatFilePath, concatContent);
     console.log('📝 Archivo concat creado');

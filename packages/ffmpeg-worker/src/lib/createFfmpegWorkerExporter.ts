@@ -4,12 +4,12 @@ import type { ExportOptions, VideoExporter } from '@framefuse/core';
 import type { FfmpegWorkerOptions } from '../types';
 
 /**
- * Mejoras clave frente a tu versión:
- * 1) Duraciones PRE-RECORTADAS cuando hay previewSeconds (y progresos exactos)
- * 2) Fallback automático a WebM/VP9 si libx264 no está disponible en ffmpeg.wasm
- * 3) Listeners de progreso/log sin fugas (un único listener global y contexto actual)
- * 4) Más mime/ext soportados (webp/avif/gif/bmp/svg). Fallback a re-encode PNG en navegador si hace falta
- * 5) Validaciones y mensajes de error más claros; limpieza robusta
+ * Key improvements:
+ * 1) Pre-trimmed durations when previewSeconds is set (with accurate progress)
+ * 2) Automatic fallback to WebM/VP9 if libx264 is unavailable in ffmpeg.wasm
+ * 3) Progress/log listeners without leaks (single global listener and current context)
+ * 4) More mime/ext supported (webp/avif/gif/bmp/svg). Fallback to browser PNG re-encode if needed
+ * 5) Clearer validations and error messages; robust cleanup
  */
 
 function guessExt(mime: string): string {
@@ -58,7 +58,7 @@ async function dataUrlToBytes(dataUrl: string): Promise<{ bytes: Uint8Array; ext
     }
 
     // Verificar que es base64 válido
-    const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
+    const base64Pattern = /^[A-Za-z0-9+/]+={0,2}$/;
     if (!base64Pattern.test(data)) {
       throw new Error('Invalid base64 data in data URL');
     }
@@ -199,22 +199,6 @@ export function createFfmpegWorkerExporter(_options: FfmpegWorkerOptions = {}): 
     }
   }
 
-  async function canEncodeMp4(): Promise<boolean> {
-    if (mp4Support !== null) return mp4Support;
-    try {
-      // Pequeña prueba de 1s para validar libx264 en este build
-      await ffmpeg.writeFile('c.black', new Uint8Array()); // no importa, generamos con lavfi
-      await ffmpeg.exec(['-f','lavfi','-i','color=size=16x16:rate=1:color=black','-t','1','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart','t.mp4']);
-      await ffmpeg.deleteFile('t.mp4');
-      mp4Support = true;
-    } catch {
-      mp4Support = false;
-    } finally {
-      try { await ffmpeg.deleteFile('c.black'); } catch {}
-    }
-    return mp4Support;
-  }
-
   function normalizeDurations(timeline: Timeline, previewSeconds?: number | null) {
     const base = timeline.clips.map(c => toSec(c.durationMs));
     if (!previewSeconds || previewSeconds <= 0) return base;
@@ -245,7 +229,7 @@ export function createFfmpegWorkerExporter(_options: FfmpegWorkerOptions = {}): 
       }, 0);
       const MAX_TOTAL_MEMORY = 200 * 1024 * 1024; // 200MB
       if (totalEstimatedMemory > MAX_TOTAL_MEMORY) {
-        throw new Error(`Memoria total estimada demasiado grande: ${Math.round(totalEstimatedMemory / 1024 / 1024)}MB. Máximo: ${MAX_TOTAL_MEMORY / 1024 / 1024}MB`);
+        throw new Error(`Estimated total memory too large: ${Math.round(totalEstimatedMemory / 1024 / 1024)}MB. Maximum: ${MAX_TOTAL_MEMORY / 1024 / 1024}MB`);
       }
 
       // Duraciones normalizadas (con previewSeconds aplicado ANTES de calcular xfade)

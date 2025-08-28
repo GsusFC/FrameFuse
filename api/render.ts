@@ -5,7 +5,38 @@ import path from 'path';
 import { tmpdir } from 'os';
 
 // Usar FFmpeg directamente sin ffmpeg-static
-const FFMPEG_PATH = '/usr/bin/ffmpeg';
+// Usar FFmpeg directamente sin ffmpeg-static
+const FFMPEG_PATH = process.env.FFMPEG_PATH || '/usr/bin/ffmpeg';
+
+// Type definition for processed clips
+interface ProcessedClip {
+  inputPath: string;
+  duration: number;
+  [key: string]: any; // Allow additional properties from original clip
+}
+
+// Helper function to remove directory recursively (for Node.js compatibility)
+async function removeDirectory(dirPath: string): Promise<void> {
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true })
+
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        await removeDirectory(fullPath)
+      } else {
+        await fs.unlink(fullPath)
+      }
+    }
+
+    await fs.rmdir(dirPath)
+  } catch (error) {
+    // Ignore errors during cleanup
+  }
+}
+
+// Timeout para FFmpeg (5 minutos)
+const FFMPEG_TIMEOUT_MS = 5 * 60 * 1000;
 
 // Configuración de runtime para Vercel Function
 export const config = {
@@ -75,15 +106,33 @@ export default async function handler(req: any, res: any) {
       return sendJSON(res, 400, { error: 'Proyecto inválido o sin clips' })
     }
 
+    // Validar parámetros de video
+    const allowedFormats = ['webm', 'mp4']
+    if (!allowedFormats.includes(format)) {
+      return sendJSON(res, 400, { error: 'Formato inválido. Use: webm o mp4' })
+    }
+
+    const parsedFps = parseInt(fps, 10)
+    if (isNaN(parsedFps) || parsedFps < 1 || parsedFps > 120) {
+      return sendJSON(res, 400, { error: 'FPS debe ser un entero entre 1 y 120' })
+    }
+
+    const parsedWidth = parseInt(width, 10)
+    const parsedHeight = parseInt(height, 10)
+    if (isNaN(parsedWidth) || parsedWidth < 1 || parsedWidth > 10000 ||
+        isNaN(parsedHeight) || parsedHeight < 1 || parsedHeight > 10000) {
+      return sendJSON(res, 400, { error: 'Dimensiones deben ser enteros entre 1 y 10000' })
+    }
+
     console.log('📦 Proyecto recibido:', {
       clips: project.clips.length,
       format,
-      fps,
-      resolution: `${width}x${height}`
+      fps: parsedFps,
+      resolution: `${parsedWidth}x${parsedHeight}`
     })
 
     // Procesar clips e imágenes
-    const processedClips = []
+    const processedClips: ProcessedClip[] = []
 
     for (let i = 0; i < project.clips.length; i++) {
       const clip = project.clips[i]
@@ -98,7 +147,7 @@ export default async function handler(req: any, res: any) {
 
         // Usar Sharp para procesar la imagen
         await sharp(bytes)
-          .resize(width, height, {
+          .resize(parsedWidth, parsedHeight, {
             fit: 'cover',
             position: 'center'
           })
@@ -140,8 +189,8 @@ export default async function handler(req: any, res: any) {
       '-c:v', format === 'webm' ? 'libvpx-vp9' : 'libx264',
       '-crf', '30',
       '-pix_fmt', 'yuv420p',
-      '-r', fps.toString(),
-      '-vf', `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
+      '-r', parsedFps.toString(),
+      '-vf', `scale=${parsedWidth}:${parsedHeight}:force_original_aspect_ratio=decrease,pad=${parsedWidth}:${parsedHeight}:(ow-iw)/2:(oh-ih)/2`,
       outputPath
     ]
 
@@ -156,12 +205,20 @@ export default async function handler(req: any, res: any) {
       })
 
       let stderr = ''
-      
+
       process.stderr?.on('data', (data) => {
         stderr += data.toString()
       })
 
+      // Configurar timeout
+      const timeout = setTimeout(() => {
+        console.error('⏰ FFmpeg timeout alcanzado, terminando proceso')
+        process.kill('SIGKILL')
+        reject(new Error(`FFmpeg timeout after ${FFMPEG_TIMEOUT_MS}ms: ${stderr}`))
+      }, FFMPEG_TIMEOUT_MS)
+
       process.on('close', (code) => {
+        clearTimeout(timeout)
         if (code === 0) {
           console.log('✅ FFmpeg finalizado correctamente')
           resolve()
@@ -173,6 +230,7 @@ export default async function handler(req: any, res: any) {
       })
 
       process.on('error', (err) => {
+        clearTimeout(timeout)
         console.error('❌ Error ejecutando FFmpeg:', err)
         reject(err)
       })
@@ -189,7 +247,7 @@ export default async function handler(req: any, res: any) {
     console.log('✅ Video renderizado, tamaño:', outputData.length, 'bytes')
 
     // Limpiar archivos temporales
-    await fs.rm(tempDir, { recursive: true, force: true })
+    await removeDirectory(tempDir)
     console.log('🧹 Archivos temporales limpiados')
 
     // Configurar headers de respuesta
@@ -209,7 +267,7 @@ export default async function handler(req: any, res: any) {
 
     // Limpiar archivos temporales en caso de error
     if (tempDir) {
-      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {})
+      await removeDirectory(tempDir)
     }
 
     return sendJSON(res, 500, {

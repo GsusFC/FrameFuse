@@ -43,7 +43,8 @@ export function ExportPanel() {
   };
 
   // API Configuration - GitLab (actualizar después del despliegue)
-  const API_BASE = 'https://gsusfc-group-gsusfc-project-451d11f8285b8a43cd344674bee085149f97724b.gitlab.io';
+  // Update with your actual API deployment URL
+  const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3000';
 
   function applyPreset(nextPreset: 'fast' | 'balanced' | 'quality' | 'manual', f: 'webm' | 'mp4' | 'gif') {
     if (nextPreset === 'manual') { setPreset('manual'); return; }
@@ -241,38 +242,73 @@ export function ExportPanel() {
               const compressedClips = await Promise.all(clips.map(async (clip, index) => {
                 console.log(`🗜️ Comprimiendo imagen ${index + 1}/${clips.length}...`);
                 setProgress((index + 0.5) / (clips.length * 2)); // 50% del progreso para compresión
-                
-                return new Promise<any>((resolve) => {
-                  const img = new Image();
-                  img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d')!;
-                    
-                    // Reducir resolución para optimizar payload
-                    const maxWidth = 1280;
-                    const maxHeight = 720;
-                    let { width: imgWidth, height: imgHeight } = img;
-                    
-                    if (imgWidth > maxWidth || imgHeight > maxHeight) {
-                      const ratio = Math.min(maxWidth / imgWidth, maxHeight / imgHeight);
-                      imgWidth *= ratio;
-                      imgHeight *= ratio;
-                    }
-                    
-                    canvas.width = imgWidth;
-                    canvas.height = imgHeight;
-                    ctx.drawImage(img, 0, 0, imgWidth, imgHeight);
-                    
-                    // Comprimir a JPEG con calidad 0.8
-                    const compressedData = canvas.toDataURL('image/jpeg', 0.8);
-                    resolve({
-                      imageData: compressedData,
-                      durationMs: clip.durationMs,
-                      transitionAfter: clip.transitionAfter
-                    });
+
+                try {
+                  return await new Promise<any>((resolve, reject) => {
+                    const img = new Image();
+
+                    img.onload = () => {
+                      try {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+
+                        if (!ctx) {
+                          console.error(`❌ Canvas 2D context not available for clip ${index + 1}`);
+                          reject(new Error(`Canvas 2D context not available for clip ${index + 1}`));
+                          return;
+                        }
+
+                        // Reducir resolución para optimizar payload
+                        const maxWidth = 1280;
+                        const maxHeight = 720;
+                        let { width: imgWidth, height: imgHeight } = img;
+
+                        if (imgWidth > maxWidth || imgHeight > maxHeight) {
+                          const ratio = Math.min(maxWidth / imgWidth, maxHeight / imgHeight);
+                          imgWidth *= ratio;
+                          imgHeight *= ratio;
+                        }
+
+                        canvas.width = imgWidth;
+                        canvas.height = imgHeight;
+                        ctx.drawImage(img, 0, 0, imgWidth, imgHeight);
+
+                        // Comprimir a JPEG con calidad 0.8
+                        const compressedData = canvas.toDataURL('image/jpeg', 0.8);
+                        if (!compressedData || compressedData === 'data:,') {
+                          console.error(`❌ Failed to generate compressed data for clip ${index + 1}`);
+                          reject(new Error(`Failed to generate compressed data for clip ${index + 1}`));
+                          return;
+                        }
+
+                        resolve({
+                          imageData: compressedData,
+                          durationMs: clip.durationMs,
+                          transitionAfter: clip.transitionAfter
+                        });
+                      } catch (canvasError) {
+                        console.error(`❌ Canvas operation failed for clip ${index + 1}:`, canvasError);
+                        reject(new Error(`Canvas operation failed for clip ${index + 1}: ${canvasError instanceof Error ? canvasError.message : 'Unknown error'}`));
+                      }
+                    };
+
+                    img.onerror = () => {
+                      console.error(`❌ Image failed to load for clip ${index + 1}: ${clip.src}`);
+                      reject(new Error(`Image failed to load for clip ${index + 1}`));
+                    };
+
+                    img.src = clip.src;
+                  });
+                } catch (error) {
+                  console.error(`❌ Image compression failed for clip ${index + 1}:`, error);
+                  // Return a placeholder object instead of failing the entire export
+                  return {
+                    imageData: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', // 1x1 transparent PNG
+                    durationMs: clip.durationMs,
+                    transitionAfter: clip.transitionAfter,
+                    error: `Compression failed: ${error instanceof Error ? error.message : 'Unknown error'}`
                   };
-                  img.src = clip.src;
-                });
+                }
               }));
 
               const project = { clips: compressedClips };
@@ -287,31 +323,73 @@ export function ExportPanel() {
 
               setProgress(0.5); // 50% completado con compresión
 
-              const response = await fetch(`${API_BASE}/api/render`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  project,
-                  format,
-                  fps,
-                  width: width || 1920,
-                  height: height || 1080
-                })
-              });
+              // Create AbortController for timeout and cancellation
+              const controller = new AbortController();
+              setController(controller);
 
-              if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`API error: ${response.status} - ${errorText}`);
+              // Set up timeout (5 minutes for video rendering)
+              const timeoutId = setTimeout(() => {
+                controller.abort();
+              }, 5 * 60 * 1000);
+
+              let blob: Blob;
+
+              try {
+                const response = await fetch(`${API_BASE}/api/render`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    project,
+                    format,
+                    fps,
+                    width: width || 1920,
+                    height: height || 1080
+                  }),
+                  signal: controller.signal
+                });
+
+                if (!response.ok) {
+                  const errorText = await response.text();
+                  throw new Error(`API error: ${response.status} - ${errorText}`);
+                }
+
+                console.log('✅ Respuesta de API recibida');
+                setProgress(0.8);
+
+                blob = await response.blob();
+                console.log('✅ Video renderizado, tamaño:', formatBytes(blob.size));
+                setProgress(1);
+              } catch (fetchError) {
+                // Clear timeout
+                clearTimeout(timeoutId);
+
+                // Handle different types of errors
+                if (fetchError instanceof Error) {
+                  if (fetchError.name === 'AbortError') {
+                    // Check if it was due to timeout or manual cancellation
+                    const wasTimeout = controller.signal.aborted && !controller.signal.reason;
+                    if (wasTimeout) {
+                      throw new Error('Request timed out after 5 minutes. The video rendering took too long.');
+                    } else {
+                      throw new Error('Request was cancelled by user.');
+                    }
+                  } else if (fetchError.message.includes('Failed to fetch') || fetchError.message.includes('NetworkError')) {
+                    throw new Error('Network error: Unable to connect to the rendering service. Please check your internet connection and try again.');
+                  } else {
+                    // Re-throw other fetch errors (like API errors we already handled above)
+                    throw fetchError;
+                  }
+                } else {
+                  throw new Error(`Unexpected error during API request: ${String(fetchError)}`);
+                }
+              } finally {
+                // Always clear the timeout
+                clearTimeout(timeoutId);
+                // Clear controller reference
+                setController(null);
               }
-
-              console.log('✅ Respuesta de API recibida');
-              setProgress(0.8);
-              
-              const blob = await response.blob();
-              console.log('✅ Video renderizado, tamaño:', formatBytes(blob.size));
-              setProgress(1);
               
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
@@ -333,8 +411,8 @@ export function ExportPanel() {
           {busy ? 'Exportando…' : 'Exportar Video'}
         </button>
 
-        {busy && (
-          <Button variant="outline" onClick={() => controller?.abort()}>Cancelar</Button>
+        {busy && controller && (
+          <Button variant="outline" onClick={() => controller.abort()}>Cancel</Button>
         )}
       </div>
       {busy && (
