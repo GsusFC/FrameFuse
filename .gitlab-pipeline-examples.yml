@@ -1,0 +1,116 @@
+# 🚀 Ejemplos de Uso de GitLab CI/CD Inputs para FrameFuse
+# Archivo de ejemplos para demostrar cómo usar los inputs configurados
+
+# Ejemplo 1: Despliegue a producción con configuración completa
+production_deployment:
+  include:
+    - local: '.gitlab-ci.yml'
+    inputs:
+      environment: "production"
+      node_version: "18"
+      enable_mcp: true
+      registry_prefix: ""
+      health_check_enabled: true
+
+# Ejemplo 2: Despliegue a staging con Node.js 20
+staging_deployment:
+  include:
+    - local: '.gitlab-ci.yml'
+    inputs:
+      environment: "staging"
+      node_version: "20"
+      enable_mcp: true
+      registry_prefix: "staging-"
+      health_check_enabled: true
+
+# Ejemplo 3: Desarrollo sin MCP (más rápido para desarrollo)
+development_deployment:
+  include:
+    - local: '.gitlab-ci.yml'
+    inputs:
+      environment: "development"
+      node_version: "18"
+      enable_mcp: false
+      registry_prefix: "dev-"
+      health_check_enabled: false
+
+# Ejemplo 4: Configuración mínima (usa valores por defecto)
+minimal_deployment:
+  include:
+    - local: '.gitlab-ci.yml'
+    # Sin inputs = usa valores por defecto
+
+# Ejemplo 5: Configuración personalizada con argumentos Docker
+custom_deployment:
+  include:
+    - local: '.gitlab-ci.yml'
+    inputs:
+      environment: "production"
+      node_version: "18"
+      enable_mcp: true
+      docker_build_args: "--build-arg BUILDKIT_INLINE_CACHE=1 --no-cache"
+      registry_prefix: "custom-"
+      health_check_enabled: true
+
+# Ejemplo 6: Trigger manual con diferentes entornos
+trigger_examples:
+  # Trigger para staging
+  deploy_staging:
+    trigger:
+      include:
+        - local: '.gitlab-ci.yml'
+          inputs:
+            environment: "staging"
+            node_version: "18"
+            enable_mcp: true
+    rules:
+      - if: $CI_COMMIT_BRANCH == "develop"
+
+  # Trigger para producción (manual)
+  deploy_production:
+    trigger:
+      include:
+        - local: '.gitlab-ci.yml'
+          inputs:
+            environment: "production"
+            node_version: "18"
+            enable_mcp: true
+    rules:
+      - if: $CI_COMMIT_BRANCH == "main"
+    when: manual
+
+# Ejemplo 7: Pipeline con múltiples entornos
+multi_environment_pipeline:
+  stages:
+    - build
+    - test
+    - deploy
+
+  # Build una vez para todos los entornos
+  build_once:
+    stage: build
+    script:
+      - echo "Building once for all environments"
+
+  # Deploy a diferentes entornos con diferentes configuraciones
+  deploy_staging:
+    extends: .deploy_template
+    variables:
+      ENVIRONMENT: "staging"
+
+  deploy_production:
+    extends: .deploy_template
+    variables:
+      ENVIRONMENT: "production"
+    when: manual
+
+  .deploy_template: &deploy_template
+    stage: deploy
+    include:
+      - local: '.gitlab-ci.yml'
+        inputs:
+          environment: $ENVIRONMENT
+          node_version: "18"
+          enable_mcp: true
+    script:
+      - echo "Deploying to $ENVIRONMENT"

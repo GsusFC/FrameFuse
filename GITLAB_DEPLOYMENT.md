@@ -344,6 +344,91 @@ node scripts/framefuse-mcp-server.js
 "Revisa vulnerabilidades en la imagen del registry"
 ```
 
+## 🔧 GitLab CI/CD Inputs - Configuración Avanzada
+
+### **¿Qué son los CI/CD Inputs?**
+Los **inputs** son parámetros tipados y validados que permiten personalizar pipelines de CI/CD de manera segura y reutilizable.
+
+### **Inputs Configurados en FrameFuse:**
+
+| Input | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `environment` | string | `"production"` | Entorno de despliegue (development/staging/production) |
+| `node_version` | string | `"18"` | Versión de Node.js (16/18/20) |
+| `enable_mcp` | boolean | `true` | Habilitar GitLab Duo MCP |
+| `docker_build_args` | string | `""` | Argumentos adicionales para Docker build |
+| `registry_prefix` | string | `""` | Prefijo para el registry de Docker |
+| `health_check_enabled` | boolean | `true` | Habilitar health checks automáticos |
+
+### **Ejemplos de Uso:**
+
+#### **1. Despliegue a Producción con Node.js 20:**
+```yaml
+include:
+  - local: '.gitlab-ci.yml'
+    inputs:
+      environment: "production"
+      node_version: "20"
+      enable_mcp: true
+```
+
+#### **2. Despliegue a Staging sin MCP:**
+```yaml
+include:
+  - local: '.gitlab-ci.yml'
+    inputs:
+      environment: "staging"
+      enable_mcp: false
+```
+
+#### **3. Desarrollo con argumentos personalizados:**
+```yaml
+include:
+  - local: '.gitlab-ci.yml'
+    inputs:
+      environment: "development"
+      docker_build_args: "--build-arg BUILDKIT_INLINE_CACHE=1"
+      registry_prefix: "dev-"
+```
+
+### **Ventajas de Usar Inputs:**
+
+✅ **Validación automática** - Solo valores permitidos
+✅ **Documentación integrada** - Descripciones claras
+✅ **Reutilización** - Mismo pipeline, diferentes configuraciones
+✅ **Type safety** - Evita errores de configuración
+✅ **Seguridad** - Valores validados antes de ejecución
+
+### **Cómo Usar en la Práctica:**
+
+1. **Para desarrollo rápido:**
+   ```yaml
+   include:
+     - local: '.gitlab-ci.yml'
+       inputs:
+         environment: "development"
+         enable_mcp: false
+   ```
+
+2. **Para staging con monitoreo:**
+   ```yaml
+   include:
+     - local: '.gitlab-ci.yml'
+       inputs:
+         environment: "staging"
+         enable_mcp: true
+   ```
+
+3. **Para producción optimizada:**
+   ```yaml
+   include:
+     - local: '.gitlab-ci.yml'
+       inputs:
+         environment: "production"
+         node_version: "20"
+         enable_mcp: true
+   ```
+
 ## 📋 Checklist Final
 
 ### **Antes del Primer Despliegue:**
