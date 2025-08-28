@@ -1,0 +1,101 @@
+# 🚀 FrameFuse MCP Configuration para GitLab Duo
+# Configuración para integrar IA con nuestro pipeline CI/CD
+
+# MCP Server Configuration
+mcp:
+  server:
+    name: "framefuse-mcp-server"
+    version: "1.0.0"
+    description: "MCP server for FrameFuse video editing platform"
+
+    # Herramientas disponibles para GitLab Duo
+    tools:
+      - name: "analyze_pipeline_performance"
+        description: "Analiza el rendimiento del pipeline CI/CD y sugiere optimizaciones"
+        parameters:
+          - name: "pipeline_id"
+            type: "string"
+            description: "ID del pipeline a analizar"
+
+      - name: "check_ffmpeg_compatibility"
+        description: "Verifica compatibilidad de FFmpeg en diferentes entornos"
+        parameters:
+          - name: "target_platform"
+            type: "string"
+            description: "Plataforma objetivo (docker, gitlab-ci, local)"
+
+      - name: "optimize_build_cache"
+        description: "Optimiza la estrategia de cache para builds más rápidos"
+        parameters:
+          - name: "cache_strategy"
+            type: "string"
+            description: "Estrategia de cache actual"
+
+      - name: "security_scan_container"
+        description: "Escanea la imagen Docker en busca de vulnerabilidades"
+        parameters:
+          - name: "image_tag"
+            type: "string"
+            description: "Tag de la imagen Docker a escanear"
+
+      - name: "performance_monitor"
+        description: "Monitorea rendimiento de la API y sugiere mejoras"
+        parameters:
+          - name: "endpoint"
+            type: "string"
+            description: "Endpoint de la API a monitorear"
+
+    # Recursos disponibles
+    resources:
+      - name: "gitlab_pipeline_data"
+        type: "application/json"
+        description: "Datos históricos del pipeline CI/CD"
+
+      - name: "container_registry_info"
+        type: "application/json"
+        description: "Información del Container Registry"
+
+      - name: "deployment_metrics"
+        type: "application/json"
+        description: "Métricas de despliegues y rendimiento"
+
+      - name: "error_logs_analysis"
+        type: "application/json"
+        description: "Análisis de logs de error para debugging"
+
+# GitLab Duo Integration
+gitlab_duo:
+  # Configuración para usar GitLab Duo con MCP
+  enabled: true
+
+  # Herramientas de IA disponibles
+  ai_features:
+    - chat_agentic: true    # Chat inteligente con contexto
+    - code_review: true     # Revisiones de código automatizadas
+    - pipeline_optimization: true  # Sugerencias de optimización
+    - security_scanning: true      # Escaneo de seguridad
+    - performance_analysis: true   # Análisis de rendimiento
+
+  # Context providers
+  context_providers:
+    - gitlab_ci_cd: true    # Datos del pipeline
+    - docker_registry: true # Información de contenedores
+    - application_logs: true # Logs de la aplicación
+    - performance_metrics: true # Métricas de rendimiento
+
+# Configuración de permisos
+permissions:
+  mcp_server:
+    # Permisos para que el MCP server acceda a GitLab
+    gitlab_api_access:
+      - read_repository
+      - read_ci_cd
+      - read_container_registry
+      - read_metrics
+
+  gitlab_duo:
+    # Permisos para GitLab Duo
+    mcp_client_access:
+      - connect_external_tools
+      - access_project_context
+      - read_deployment_data
