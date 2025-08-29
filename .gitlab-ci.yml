@@ -52,6 +52,7 @@ variables:
   ENVIRONMENT: $[[ inputs.environment ]]
   ENABLE_MCP: $[[ inputs.enable_mcp ]]
   REGISTRY_PREFIX: $[[ inputs.registry_prefix ]]
+  HEALTH_CHECK_ENABLED: $[[ inputs.health_check_enabled ]]
 
 # 🏗️ BUILD: Construir imagen Docker con configuración dinámica
 build:
@@ -66,6 +67,9 @@ build:
     - echo "   • Entorno: $ENVIRONMENT"
     - echo "   • Node.js: $NODE_VERSION"
     - echo "   • MCP habilitado: $ENABLE_MCP"
+    # Configurar cache Docker
+    - mkdir -p docker-cache
+    - export DOCKER_BUILDKIT=1
   script:
     # Configurar tags dinámicos basados en inputs
     - |
@@ -103,6 +107,8 @@ build:
       fi
 
       docker build $BUILD_ARGS \
+        --cache-from $FULL_REGISTRY_IMAGE:$LATEST_TAG \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
         -t $FULL_REGISTRY_IMAGE:$IMAGE_TAG \
         -t $FULL_REGISTRY_IMAGE:$LATEST_TAG \
         .
@@ -134,11 +140,12 @@ build:
     - develop
     - merge_requests
   cache:
-    key: ${CI_COMMIT_REF_SLUG}-${ENVIRONMENT}
+    key: ${CI_COMMIT_REF_SLUG}-${ENVIRONMENT}-${NODE_VERSION}
     paths:
       - .npm/
       - node_modules/
       - packages/*/node_modules/
+      - docker-cache/
   artifacts:
     reports:
       dotenv: build.env
@@ -238,7 +245,7 @@ test:
     - |
       if [ "$ENABLE_MCP" = "true" ]; then
         echo "🤖 Ejecutando tests de MCP..."
-        - node scripts/test-mcp.js || echo "⚠️ Tests MCP fallaron"
+        node scripts/test-mcp.js || echo "⚠️ Tests MCP fallaron"
       fi
 
     # Verificar TypeScript (solo en desarrollo y staging)
@@ -278,12 +285,13 @@ test:
     - develop
     - merge_requests
   cache:
-    key: ${CI_COMMIT_REF_SLUG}-${ENVIRONMENT}
+    key: ${CI_COMMIT_REF_SLUG}-${ENVIRONMENT}-${NODE_VERSION}
     paths:
       - .npm/
       - node_modules/
       - packages/*/node_modules/
       - packages/*/dist/
+      - docker-cache/
   dependencies:
     - build
   artifacts:
@@ -391,7 +399,7 @@ deploy:
 
   environment:
     name: $[[ inputs.environment ]]
-    url: $[[ inputs.environment == "production" ? "https://api.framefuse.com" : inputs.environment == "staging" ? "https://staging-api.framefuse.com" : "https://dev-api.framefuse.com" ]]
+    url: https://api.framefuse.com
   only:
     - main
   dependencies:
@@ -559,9 +567,10 @@ report:
     - echo "   ✅ Pipeline completado exitosamente"
     - echo "   ✅ Imagen Docker construida y subida"
     - echo "   ✅ Tests ejecutados correctamente"
-    if [ "$ENABLE_MCP" = "true" ]; then
-      echo "   ✅ MCP habilitado para IA integrada"
-    fi
+    - |
+      if [ "$ENABLE_MCP" = "true" ]; then
+        echo "   ✅ MCP habilitado para IA integrada"
+      fi
     - echo "   📊 Reporte detallado generado"
 
   only:
