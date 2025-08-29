@@ -1,5 +1,6 @@
 # 🦊 GitLab CI/CD Pipeline para FrameFuse API
 # Despliegue automatizado con Docker y FFmpeg + MCP
+# Correcciones críticas aplicadas - Pipeline optimizado
 
 # Configuración de inputs para mayor flexibilidad
 spec:
