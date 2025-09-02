@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { TimelinePanel } from '../features/timeline/TimelinePanel.tsx';
+import { TimelinePanel } from '../features/timeline/TimelinePanel';
 import { PreviewPanel } from '../features/preview/PreviewPanel';
 import { ExportPanel } from '../features/export/ExportPanel';
 import { useUploadStore } from '../features/upload/store';
