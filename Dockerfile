@@ -47,7 +47,7 @@ USER framefuse
 
 # Health check mejorado
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node api/health.js || exit 1
+  CMD node scripts/health-check.js || exit 1
 
 # Exponer puertos
 EXPOSE 3000

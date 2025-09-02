@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "turbo run dev --parallel",
+    "dev:local": "bash scripts/dev-local.sh",
     "build": "turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
