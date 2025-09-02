@@ -52,7 +52,7 @@ engines:
   # ESLint para JavaScript/TypeScript
   eslint:
     enabled: true
-    channel: "eslint-9"
+    channel: "eslint-8"
     config:
       config: "eslint.config.js"
 

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useUploadStore } from '../upload/store';
 import { Button } from '@framefuse/ui-kit';
+import { API_BASE } from '../../config';
 // Lazy import para code-splitting y carga bajo demanda del worker/FFmpeg
 
 export function ExportPanel() {
@@ -14,6 +15,10 @@ export function ExportPanel() {
   const [crf, setCrf] = React.useState<number | undefined>(23);
   const [bitrate, setBitrate] = React.useState<number | undefined>(undefined);
   const [speedPreset, setSpeedPreset] = React.useState<string>('medium');
+  // Estrategia de export del backend y debug
+  const [exportStrategy, setExportStrategy] = React.useState<'segments' | 'xfade'>('segments');
+  const [debugExport, setDebugExport] = React.useState<boolean>(false);
+  const [showAdvanced, setShowAdvanced] = React.useState<boolean>(false);
   const [keyint, setKeyint] = React.useState<number | undefined>(undefined);
   const [gifColors, setGifColors] = React.useState(256);
   const [gifDither, setGifDither] = React.useState(true);
@@ -42,9 +47,34 @@ export function ExportPanel() {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
-  // API Configuration - GitLab (actualizar después del despliegue)
-  // Update with your actual API deployment URL
-  const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3000';
+  // API base centralizada (apps/web/src/config.ts)
+
+  // Función para validar configuración antes de exportar
+  function validateExportSettings(): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    if (format === 'gif') {
+      if (gifColors < 2 || gifColors > 256) {
+        errors.push(`Colores GIF debe estar entre 2 y 256 (actual: ${gifColors})`);
+      }
+      if (fps < 1 || fps > 60) {
+        errors.push(`FPS debe estar entre 1 y 60 (actual: ${fps})`);
+      }
+    }
+
+    if (width && (width < 1 || width > 7680)) {
+      errors.push(`Ancho debe estar entre 1 y 7680 píxeles (actual: ${width})`);
+    }
+
+    if (height && (height < 1 || height > 4320)) {
+      errors.push(`Alto debe estar entre 1 y 4320 píxeles (actual: ${height})`);
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
 
   function applyPreset(nextPreset: 'fast' | 'balanced' | 'quality' | 'manual', f: 'webm' | 'mp4' | 'gif') {
     if (nextPreset === 'manual') { setPreset('manual'); return; }
@@ -169,25 +199,88 @@ export function ExportPanel() {
             <option value="cover">Cover</option>
           </select>
         </div>
-        <div className="flex gap-2 items-center">
-          <label className="text-[var(--text-muted)]">Calidad</label>
-          <input placeholder="CRF" type="number" className="border border-[var(--border)] bg-[var(--panel)] rounded px-2 py-1 w-20" value={crf ?? ''} onFocus={ensureManual} onChange={(e) => setCrf(e.target.value ? Number(e.target.value) : undefined)} />
-          <span className="text-[var(--text-muted)]">o</span>
-          <input placeholder="kbps" type="number" className="border border-[var(--border)] bg-[var(--panel)] rounded px-2 py-1 w-24" value={bitrate ?? ''} onFocus={ensureManual} onChange={(e) => setBitrate(e.target.value ? Number(e.target.value) : undefined)} />
-          <label className="text-[var(--text-muted)]">Preset</label>
-          <select className="border border-[var(--border)] bg-[var(--panel)] rounded px-2 py-1" value={speedPreset} onMouseDown={ensureManual} onChange={(e) => setSpeedPreset(e.target.value)}>
-            {['ultrafast','superfast','veryfast','faster','fast','medium','slow','slower','veryslow'].map(p => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-          <label className="text-[var(--text-muted)]">Keyint</label>
-          <input placeholder="auto" type="number" className="border border-[var(--border)] bg-[var(--panel)] rounded px-2 py-1 w-24" value={keyint ?? ''} onFocus={ensureManual} onChange={(e) => setKeyint(e.target.value ? Number(e.target.value) : undefined)} />
+        <div className="flex items-center justify-between">
+          <div className="text-[var(--text-muted)] text-xs">Opciones avanzadas</div>
+          <Button size="sm" variant="outline" onClick={() => setShowAdvanced(v => !v)}>{showAdvanced ? 'Ocultar' : 'Mostrar'}</Button>
         </div>
+        {showAdvanced && (
+          <div className="space-y-3 border border-[var(--border)] rounded p-2 bg-[var(--surface)]">
+            <div className="flex flex-col gap-2">
+              <label className="text-[var(--text-muted)] text-xs">Calidad (CRF o bitrate)</label>
+              <div className="grid grid-cols-2 gap-2">
+                <input placeholder="CRF" type="number" className="border border-[var(--border)] bg-[var(--panel)] rounded px-2 py-1 w-full" value={crf ?? ''} onFocus={ensureManual} onChange={(e) => setCrf(e.target.value ? Number(e.target.value) : undefined)} />
+                <input placeholder="kbps" type="number" className="border border-[var(--border)] bg-[var(--panel)] rounded px-2 py-1 w-full" value={bitrate ?? ''} onFocus={ensureManual} onChange={(e) => setBitrate(e.target.value ? Number(e.target.value) : undefined)} />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-[var(--text-muted)] text-xs">Preset</label>
+              <select className="border border-[var(--border)] bg-[var(--panel)] rounded px-2 py-1 w-full" value={speedPreset} onMouseDown={ensureManual} onChange={(e) => setSpeedPreset(e.target.value)}>
+                {['ultrafast','superfast','veryfast','faster','fast','medium','slow','slower','veryslow'].map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-[var(--text-muted)] text-xs">Keyint</label>
+              <input placeholder="auto" type="number" className="border border-[var(--border)] bg-[var(--panel)] rounded px-2 py-1 w-full" value={keyint ?? ''} onFocus={ensureManual} onChange={(e) => setKeyint(e.target.value ? Number(e.target.value) : undefined)} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-[var(--text-muted)] text-xs">Estrategia</label>
+              <select className="border border-[var(--border)] bg-[var(--panel)] rounded px-2 py-1 w-full" value={exportStrategy} onChange={(e) => setExportStrategy(e.target.value as 'segments' | 'xfade')}>
+                <option value="segments">Segments (recomendado)</option>
+                <option value="xfade">Xfade secuencial</option>
+              </select>
+              <label className="flex items-center gap-2 text-[var(--text-muted)]"><input type="checkbox" checked={debugExport} onChange={(e) => setDebugExport(e.target.checked)} /> Debug</label>
+            </div>
+          </div>
+        )}
         {format === 'gif' && (
           <div className="flex flex-col gap-2">
             <div className="flex gap-2 items-center">
               <label className="text-[var(--text-muted)]">GIF</label>
-              <input type="number" className="border border-[var(--border)] bg-[var(--panel)] rounded px-2 py-1 w-24" value={gifColors} min={2} max={256} onFocus={ensureManual} onChange={(e) => setGifColors(Number(e.target.value))} />
+              <div className="relative">
+                <input
+                  type="number"
+                  className={`border rounded px-2 py-1 w-24 ${
+                    gifColors < 2 || gifColors > 256
+                      ? 'border-red-500 bg-red-50 text-red-700'
+                      : 'border-[var(--border)] bg-[var(--panel)]'
+                  }`}
+                  value={gifColors}
+                  min={2}
+                  max={256}
+                  aria-invalid={gifColors < 2 || gifColors > 256}
+                  onFocus={ensureManual}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    // Limitar automáticamente el valor al rango válido
+                    if (value >= 2 && value <= 256) {
+                      setGifColors(value);
+                    } else if (value > 256) {
+                      setGifColors(256);
+                    } else if (value < 2 && value > 0) {
+                      setGifColors(2);
+                    } else if (e.target.value === '') {
+                      setGifColors(256); // Valor por defecto
+                    }
+                  }}
+                  onBlur={(e) => {
+                    // Asegurar valor válido al perder el foco
+                    const value = Number(e.target.value);
+                    if (isNaN(value) || value < 2) {
+                      setGifColors(2);
+                    } else if (value > 256) {
+                      setGifColors(256);
+                    }
+                  }}
+                />
+                {(gifColors < 2 || gifColors > 256) && (
+                  <div className="absolute -bottom-5 left-0 text-xs text-red-600">
+                    Rango: 2-256 colores
+                  </div>
+                )}
+              </div>
+              <span className="text-[var(--text-muted)] text-xs">colores</span>
               <label className="flex items-center gap-2 text-[var(--text-muted)]"><input type="checkbox" checked={gifLoop} onChange={(e) => { ensureManual(); setGifLoop(e.target.checked); }} /> Loop</label>
             </div>
             <div className="flex gap-2 items-center">
@@ -233,6 +326,14 @@ export function ExportPanel() {
             e.preventDefault();
             e.stopPropagation();
             if (busy) return;
+
+            // Validar configuración antes de proceder
+            const validation = validateExportSettings();
+            if (!validation.isValid) {
+              alert(`❌ Configuración inválida:\n\n${validation.errors.join('\n')}\n\nPor favor, corrige estos valores antes de exportar.`);
+              return;
+            }
+
             console.log('🌐 Iniciando exportación con API...');
             setBusy(true);
             setProgress(0);
@@ -345,7 +446,13 @@ export function ExportPanel() {
                     format,
                     fps,
                     width: width || 1920,
-                    height: height || 1080
+                    height: height || 1080,
+                    // Opciones de backend
+                    strategy: exportStrategy,
+                    // Mapea el CRF y preset de velocidad al backend
+                    crf: (crf ?? 30).toString(),
+                    preset: speedPreset,
+                    debug: debugExport
                   }),
                   signal: controller.signal
                 });
@@ -488,5 +595,3 @@ export function ExportPanel() {
     </div>
   );
 }
-
-

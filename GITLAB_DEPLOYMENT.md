@@ -49,7 +49,7 @@ CI_REGISTRY_USER = [Tu usuario GitLab]
 
 ### 4. Habilitar GitLab Container Registry
 
-En GitLab: **Settings > General > Visibility**
+En GitLab: **Settings > General > Visibility** 
 - ✅ Container Registry: **Enabled**
 
 ### 5. Verificar Pipeline
@@ -342,6 +342,68 @@ node scripts/framefuse-mcp-server.js
 "Analiza el rendimiento del pipeline de FrameFuse"
 "¿Cómo puedo optimizar el build de Docker?"
 "Revisa vulnerabilidades en la imagen del registry"
+```
+
+## 🔍 Code Quality Gates - Control de Calidad Automático
+
+### **¿Qué son los Code Quality Gates?**
+Los **Code Quality Gates** son verificaciones automáticas que analizan la calidad del código y pueden bloquear deployments si no se cumplen ciertos estándares.
+
+### **Beneficios para FrameFuse:**
+
+#### **🎯 Análisis Automático:**
+- **ESLint**: Verificación de código TypeScript/JavaScript
+- **TypeScript Compiler**: Validación de tipos
+- **Security Scans**: Detección de vulnerabilidades
+- **Code Duplication**: Identificación de código duplicado
+- **Complexity Analysis**: Medición de complejidad ciclomática
+
+#### **🚫 Bloqueo Inteligente:**
+```yaml
+# El pipeline se bloquea si:
+- Hay errores de TypeScript
+- Código no cumple estándares ESLint
+- Vulnerabilidades de seguridad críticas
+- Cobertura de tests insuficiente (futuro)
+```
+
+#### **📊 Reportes Detallados:**
+- Reportes en formato JSON para GitLab
+- Visualización en Merge Requests
+- Historial de calidad por commit
+- Tendencias de mejora continua
+
+### **Archivos de Configuración:**
+
+#### **`.codeclimate.yml`** - Configuración principal:
+```yaml
+version: "2"
+checks:
+  typescript:
+    enabled: true
+  security:
+    enabled: true
+engines:
+  eslint:
+    enabled: true
+  typescript:
+    enabled: true
+```
+
+#### **`.eslintrc.js`** - Reglas de linting:
+```javascript
+module.exports = {
+  extends: [
+    'eslint:recommended',
+    '@typescript-eslint/recommended',
+    'plugin:import/recommended'
+  ],
+  rules: {
+    '@typescript-eslint/no-unused-vars': 'error',
+    '@typescript-eslint/no-explicit-any': 'warn',
+    'import/order': 'error'
+  }
+}
 ```
 
 ## 🔧 GitLab CI/CD Inputs - Configuración Avanzada

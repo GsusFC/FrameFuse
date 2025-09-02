@@ -26,6 +26,7 @@ export function TimelinePanel() {
   const [openTransitionFor, setOpenTransitionFor] = React.useState<string | null>(null);
   const [copiedDurationId, setCopiedDurationId] = React.useState<string | null>(null);
   const [copiedTransitionForId, setCopiedTransitionForId] = React.useState<string | null>(null);
+  const [ctxMenu, setCtxMenu] = React.useState<null | { x: number; y: number; clipId: string }>(null);
 
   const totalMs = clips.reduce((s, c) => s + c.durationMs, 0);
   const currentMs = usePlayerStore((s) => s.currentMs);
@@ -56,7 +57,12 @@ export function TimelinePanel() {
       }
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    const onWindowClick = () => setCtxMenu(null);
+    window.addEventListener('click', onWindowClick);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('click', onWindowClick);
+    };
   }, [selectedIds, copyDurationFrom, pasteDurationToSelected, copyTransitionFrom, pasteTransitionToSelected]);
 
   return (
@@ -65,15 +71,7 @@ export function TimelinePanel() {
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => clearClips()}>Limpiar</Button>
           {selectedIds.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => copyDurationFrom()}>Copiar tiempo</Button>
-              <Button size="sm" variant="outline" onClick={() => equalizeSelected(600)}>Igualar 600ms</Button>
-              <Button size="sm" variant="outline" onClick={() => distributeSelected( selectedIds.length * 600 )}>Repartir</Button>
-              <Button size="sm" variant="outline" onClick={() => pasteDurationToSelected()}>Pegar tiempo</Button>
-              <Button size="sm" variant="outline" onClick={() => copyTransitionFrom()}>Copiar transición</Button>
-              <Button size="sm" variant="outline" onClick={() => pasteTransitionToSelected()}>Pegar transición</Button>
-              <span className="text-xs text-[var(--text-muted)]">{selectedIds.length} seleccionadas</span>
-            </div>
+            <span className="text-xs text-[var(--text-muted)]">{selectedIds.length} seleccionadas</span>
           )}
           {(clipboardDurationMs || clipboardTransition) && (
             <span className="text-xs text-[var(--text-muted)]">
@@ -102,14 +100,31 @@ export function TimelinePanel() {
           <ul className="flex gap-1 overflow-x-auto overflow-y-hidden max-w-full py-2 h-full items-center">
             {clips.map((c, idx) => (
               <React.Fragment key={c.id}>
-                <SortableItem id={c.id}>
+                <SortableItem id={c.id} onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, clipId: c.id }); }}>
                   <li
-                    className={`relative border rounded p-2 bg-[var(--panel)] w-48 shrink-0 ${selectedIds.includes(c.id) ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'border-[var(--border)]'} ${copiedDurationId === c.id ? 'ring-2 ring-[var(--accent)]' : ''}`}
-                    onPointerDown={(e) => toggleSelect(c.id, e.metaKey || e.ctrlKey || e.shiftKey)}
+                    className={`group relative border rounded p-2 bg-[var(--panel)] w-48 shrink-0 ${selectedIds.includes(c.id) ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'border-[var(--border)]'} ${copiedDurationId === c.id ? 'ring-2 ring-[var(--accent)]' : ''}`}
+                    onPointerDown={(e) => {
+                      const ev = e as unknown as React.MouseEvent;
+                      if (ev.button === 2) { // botón derecho
+                        ev.preventDefault();
+                        setCtxMenu({ x: ev.clientX, y: ev.clientY, clipId: c.id });
+                        return;
+                      }
+                      toggleSelect(c.id, ev.metaKey || ev.ctrlKey || ev.shiftKey);
+                    }}
+                    onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, clipId: c.id }); }}
                     onClick={(e) => toggleSelect(c.id, e.metaKey || e.ctrlKey || e.shiftKey)}
                     onDoubleClick={() => { copyDurationFrom(c.id); setCopiedDurationId(c.id); window.setTimeout(() => setCopiedDurationId(null), 1200);} }
                     aria-selected={selectedIds.includes(c.id)}
                   >
+                    {/* Botón menú (hover) */}
+                    <button
+                      title="Acciones"
+                      className="z-20 absolute top-1 left-1 h-6 w-6 rounded bg-[var(--surface)]/90 border border-[var(--border)] text-xs opacity-0 group-hover:opacity-100 focus:opacity-100"
+                      onClick={(e) => { e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, clipId: c.id }); }}
+                    >
+                      ⋯
+                    </button>
                     <img src={c.src} alt="clip" className="h-28 w-full object-cover rounded" />
                     <div className="mt-2 space-y-1">
                       <div className="flex justify-between text-[10px] text-[var(--text-muted)]">
@@ -190,6 +205,57 @@ export function TimelinePanel() {
         </SortableContext>
       </DndContext>
       </div>
+      {/* Menú contextual por clip */}
+      {ctxMenu && (() => {
+        const clip = clips.find(cl => cl.id === ctxMenu.clipId);
+        if (!clip) return null;
+        const equalizeTo = clip.durationMs;
+        const selCount = selectedIds.length || 1;
+        return (
+          <div className="fixed inset-0 z-[200]" onContextMenu={(e) => e.preventDefault()} onClick={() => setCtxMenu(null)}>
+            <div
+              className="absolute min-w-[220px] rounded border border-[var(--border)] bg-[var(--surface)] shadow-lg"
+              style={{ top: Math.min(ctxMenu.y, window.innerHeight - 220), left: Math.min(ctxMenu.x, window.innerWidth - 240) }}
+              role="menu"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ul className="py-1 text-sm">
+                <li>
+                  <button className="w-full text-left px-3 py-2 hover:bg-[var(--panel)]" onClick={() => { copyDurationFrom(ctxMenu.clipId); setCopiedDurationId(ctxMenu.clipId); setCtxMenu(null); window.setTimeout(() => setCopiedDurationId(null), 1200); }}>
+                    Copiar tiempo
+                  </button>
+                </li>
+                <li>
+                  <button className="w-full text-left px-3 py-2 hover:bg-[var(--panel)]" onClick={() => { equalizeSelected(equalizeTo); setCtxMenu(null); }}>
+                    Igualar a este clip ({equalizeTo} ms)
+                  </button>
+                </li>
+                <li>
+                  <button className="w-full text-left px-3 py-2 hover:bg-[var(--panel)]" onClick={() => { distributeSelected(Math.max(600, selCount * 600)); setCtxMenu(null); }}>
+                    Repartir (600 ms c/u)
+                  </button>
+                </li>
+                <li>
+                  <button className="w-full text-left px-3 py-2 hover:bg-[var(--panel)]" onClick={() => { pasteDurationToSelected(); setCtxMenu(null); }}>
+                    Pegar tiempo a seleccionados
+                  </button>
+                </li>
+                <li><hr className="my-1 border-[var(--border)]" /></li>
+                <li>
+                  <button className="w-full text-left px-3 py-2 hover:bg-[var(--panel)]" onClick={() => { copyTransitionFrom(ctxMenu.clipId); setCopiedTransitionForId(ctxMenu.clipId); setCtxMenu(null); window.setTimeout(() => setCopiedTransitionForId(null), 1200); }}>
+                    Copiar transición
+                  </button>
+                </li>
+                <li>
+                  <button className="w-full text-left px-3 py-2 hover:bg-[var(--panel)]" onClick={() => { pasteTransitionToSelected(); setCtxMenu(null); }}>
+                    Pegar transición a seleccionados
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </div>
+        );
+      })()}
       {openTransitionFor && (() => {
         const i = clips.findIndex(x => x.id === openTransitionFor);
         if (i === -1 || i === clips.length - 1) return null;
@@ -211,6 +277,8 @@ export function TimelinePanel() {
                 <option value="cut">Corte</option>
                 <option value="crossfade">Crossfade</option>
                 <option value="fade">Fade</option>
+                <option value="fadeblack">Fade Black</option>
+                <option value="fadewhite">Fade White</option>
                 <option value="slide-right">Slide (→)</option>
                 <option value="slide-left">Slide (←)</option>
                 <option value="slide-up">Slide (↑)</option>
@@ -221,6 +289,12 @@ export function TimelinePanel() {
                 <option value="wipe-down">Wipe (↓)</option>
                 <option value="dissolve">Dissolve</option>
                 <option value="pixelate">Pixelate</option>
+                <option value="radial">Radial</option>
+                <option value="circleopen">Circle Open</option>
+                <option value="circleclose">Circle Close</option>
+                <option value="zoomin">Zoom In</option>
+                <option value="fadefast">Fade Fast</option>
+                <option value="fadeslow">Fade Slow</option>
               </select>
               {clips[i].transitionAfter && (
                 <div className="space-y-2">
@@ -264,14 +338,14 @@ export function TimelinePanel() {
   );
 }
 
-function SortableItem({ id, children }: { id: string; children: React.ReactNode }) {
+function SortableItem({ id, children, onContextMenu }: { id: string; children: React.ReactNode; onContextMenu?: (e: React.MouseEvent) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition
   };
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} onContextMenu={onContextMenu}>
       {children}
     </div>
   );
@@ -283,6 +357,10 @@ function mapTransitionLabel(id: string): string {
       return 'XF';
     case 'fade':
       return 'FD';
+    case 'fadeblack':
+      return 'FB';
+    case 'fadewhite':
+      return 'FW';
     case 'slide-right':
       return 'SL→';
     case 'slide-left':
@@ -303,6 +381,18 @@ function mapTransitionLabel(id: string): string {
       return 'DS';
     case 'pixelate':
       return 'PX';
+    case 'radial':
+      return 'RD';
+    case 'circleopen':
+      return 'CO';
+    case 'circleclose':
+      return 'CC';
+    case 'zoomin':
+      return 'ZI';
+    case 'fadefast':
+      return 'FF';
+    case 'fadeslow':
+      return 'FS';
     default:
       return 'CT';
   }

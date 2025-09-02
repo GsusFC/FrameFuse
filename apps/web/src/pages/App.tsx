@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { TimelinePanel } from '../features/timeline/TimelinePanel';
+import { TimelinePanel } from '../features/timeline/TimelinePanel.tsx';
 import { PreviewPanel } from '../features/preview/PreviewPanel';
 import { ExportPanel } from '../features/export/ExportPanel';
 import { useUploadStore } from '../features/upload/store';
@@ -86,6 +86,35 @@ export function App() {
   React.useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  // Export panel width (resizable)
+  const [exportWidth, setExportWidth] = React.useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('framefuse:exportWidth');
+      return saved ? Number(saved) : 384; // 24rem
+    } catch {
+      return 384;
+    }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem('framefuse:exportWidth', String(exportWidth)); } catch {}
+  }, [exportWidth]);
+  const startResizeXRef = React.useRef<{ startX: number; startW: number } | null>(null);
+  const onMouseDownVertical = (e: React.MouseEvent<HTMLDivElement>) => {
+    startResizeXRef.current = { startX: e.clientX, startW: exportWidth };
+    const onMove = (ev: MouseEvent) => {
+      const delta = ev.clientX - (startResizeXRef.current?.startX || 0);
+      const next = Math.min(560, Math.max(320, (startResizeXRef.current?.startW || 0) + delta));
+      setExportWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      startResizeXRef.current = null;
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
   
   const addClips = useUploadStore((s) => s.addClips);
 const replaceClips = useUploadStore((s) => s.replaceClips);
@@ -273,7 +302,13 @@ const replaceClips = useUploadStore((s) => s.replaceClips);
           <section className="flex-1 min-h-0">
             <PreviewPanel />
           </section>
-          <aside className="w-80 shrink-0 h-full min-h-0">
+          {/* Vertical resizer between preview and export panel */}
+          <div
+            className="w-1 shrink-0 cursor-col-resize bg-[var(--panel)] border-x border-[var(--border)] rounded"
+            title="Arrastra para ajustar el ancho del panel"
+            onMouseDown={onMouseDownVertical}
+          />
+          <aside className="shrink-0 h-full min-h-0" style={{ width: exportWidth }}>
             <ExportPanel />
           </aside>
         </div>
@@ -289,5 +324,3 @@ const replaceClips = useUploadStore((s) => s.replaceClips);
     </div>
   );
 }
-
-
