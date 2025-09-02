@@ -6,17 +6,18 @@
  */
 
 console.log('🎉 ANÁLISIS DE PIPELINE EXITOSO');
-console.log('=' .repeat(60));
+console.log('='.repeat(60));
 
 // Información del pipeline exitoso
+// Accept pipeline info from CLI args or environment variables
 const PIPELINE_INFO = {
-  id: '#2012753362',
-  duration: '2:27',
-  commit: '10c03b60',
-  author: 'GsusFC',
-  branch: 'master',
-  status: 'Passed',
-  timestamp: '45 seconds ago'
+  id: process.env.CI_PIPELINE_ID || process.argv[2] || '#2012753362',
+  duration: process.env.CI_PIPELINE_DURATION || process.argv[3] || '2:27',
+  commit: process.env.CI_COMMIT_SHORT_SHA || process.argv[4] || '10c03b60',
+  author: process.env.GITLAB_USER_NAME || process.argv[5] || 'GsusFC',
+  branch: process.env.CI_COMMIT_REF_NAME || process.argv[6] || 'master',
+  status: process.env.CI_PIPELINE_STATUS || process.argv[7] || 'Passed',
+  timestamp: process.argv[8] || '45 seconds ago'
 };
 
 // Función para mostrar resumen del éxito
@@ -260,7 +261,7 @@ function runAnalysis() {
   showNextSteps();
   showUsefulCommands();
   
-  console.log('=' .repeat(60));
+  console.log('='.repeat(60));
   console.log('🎉 ¡PIPELINE EXITOSO! Todas las correcciones funcionaron.');
   console.log('🚀 El sistema está listo para uso en producción.');
   console.log('📞 ¿Quieres proceder con algún paso específico?');

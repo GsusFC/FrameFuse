@@ -100,21 +100,43 @@ export function App() {
     try { localStorage.setItem('framefuse:exportWidth', String(exportWidth)); } catch {}
   }, [exportWidth]);
   const startResizeXRef = React.useRef<{ startX: number; startW: number } | null>(null);
-  const onMouseDownVertical = (e: React.MouseEvent<HTMLDivElement>) => {
-    startResizeXRef.current = { startX: e.clientX, startW: exportWidth };
+// Extracted generic resize handler factory for both axes
+const createResizeHandler = (
+  direction: 'horizontal' | 'vertical',
+  currentValue: number,
+  setValue: (val: number) => void,
+  min: number,
+  max: number
+) => {
+  return (e: React.MouseEvent<HTMLDivElement>) => {
+    const startPos = direction === 'horizontal' ? e.clientX : e.clientY;
+    const startVal = currentValue;
+
     const onMove = (ev: MouseEvent) => {
-      const delta = ev.clientX - (startResizeXRef.current?.startX || 0);
-      const next = Math.min(560, Math.max(320, (startResizeXRef.current?.startW || 0) + delta));
-      setExportWidth(next);
+      const currentPos = direction === 'horizontal' ? ev.clientX : ev.clientY;
+      const delta = currentPos - startPos;
+      const next = Math.min(max, Math.max(min, startVal + delta));
+      setValue(next);
     };
+
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      startResizeXRef.current = null;
     };
+
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   };
+};
+
+// Replace the inline vertical resize handler with the generic factory
+const onMouseDownVertical = createResizeHandler(
+  'horizontal',    // axis of movement (X)
+  exportWidth,     // starting width
+  setExportWidth,  // state setter
+  320,             // min width
+  560              // max width
+);
   
   const addClips = useUploadStore((s) => s.addClips);
 const replaceClips = useUploadStore((s) => s.replaceClips);
@@ -122,7 +144,7 @@ const replaceClips = useUploadStore((s) => s.replaceClips);
   // Escuchar mensajes del plugin de Figma
   React.useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-      // Seguridad: validar origen del mensaje (aceptar mismo origen o figma.com)
+      // Seguridad: validar origen del mensaje, pero permitir mensajes del plugin (origin puede ser 'null')
       try {
         const origin = event.origin || ''
         const sameOrigin = origin === window.location.origin
@@ -132,11 +154,9 @@ const replaceClips = useUploadStore((s) => s.replaceClips);
             const host = new URL(origin).hostname
             isFigma = host.endsWith('figma.com')
           } catch {}
-        } else {
-          // Algunos entornos (Electron) pueden reportar origin vacío/null; permitimos si el tipo es esperado
-          isFigma = false
         }
-        if (!(sameOrigin || isFigma)) {
+        const fromPlugin = !!(event.data?.source === 'figma-plugin' || event.data?.data?.source === 'figma-plugin')
+        if (!(sameOrigin || isFigma || fromPlugin || origin === 'null' || origin === '')) {
           // Ignorar mensajes de orígenes no permitidos
           return
         }
@@ -152,8 +172,8 @@ const replaceClips = useUploadStore((s) => s.replaceClips);
             return new File([blob], `${img.name}.png`, { type: 'image/png' });
           });
           
-          // Agregar los archivos al store
-          await addClips(files);
+          // Reemplazar los clips actuales para evitar mezclar con persistencia previa
+          await replaceClips(files);
           
           // Enviar confirmación de vuelta al plugin
           if (event.source) {
@@ -207,7 +227,7 @@ const replaceClips = useUploadStore((s) => s.replaceClips);
             return new File([copy.buffer], fileName, { type: `image/${ext}` });
           });
 
-          if (files.length) await addClips(files);
+          if (files.length) await replaceClips(files);
 
           // Enviar confirmación
           if (event.source) {

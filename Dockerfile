@@ -2,18 +2,16 @@
 # Optimizado para GitLab CI/CD Pipeline
 FROM node:18-alpine
 
-# Instalar FFmpeg y dependencias necesarias
+# Instalar FFmpeg
 RUN apk add --no-cache \
     ffmpeg \
-    pnpm \
     && rm -rf /var/cache/apk/*
 
 # Crear directorio de trabajo
 WORKDIR /app
 
-# Configurar pnpm para CI
-ENV PNPM_HOME="/root/.local/share/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
+# Habilitar Corepack y preparar pnpm
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 # Copiar archivos de configuración del workspace
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -34,8 +32,7 @@ COPY scripts/ ./scripts/
 RUN pnpm run build --filter=@framefuse/core
 RUN pnpm run build --filter=@framefuse/ffmpeg-worker
 
-# Instalar dependencias del MCP server (opcional)
-RUN pnpm add @modelcontextprotocol/sdk --save-optional
+
 
 # Crear usuario no-root para seguridad
 RUN addgroup -g 1001 -S nodejs

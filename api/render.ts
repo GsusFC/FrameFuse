@@ -31,7 +31,10 @@ async function removeDirectory(dirPath: string): Promise<void> {
 
     await fs.rmdir(dirPath)
   } catch (error) {
-    // Ignore errors during cleanup
+    // Only ignore ENOENT errors (file/directory doesn't exist)
+    if ((error as any).code !== 'ENOENT') {
+      console.warn('⚠️ Error during cleanup:', error)
+    }
   }
 }
 
@@ -136,11 +139,18 @@ export default async function handler(req: any, res: any) {
 
     for (let i = 0; i < project.clips.length; i++) {
       const clip = project.clips[i]
-      console.log(`📸 Procesando clip ${i + 1}/${project.clips.length}`)
-
-      // Convertir data URL a bytes
       if (clip.imageData && clip.imageData.startsWith('data:')) {
-        const base64Data = clip.imageData.split(',')[1]
+        // Validar formato de data URL antes de procesar
+        const parts = clip.imageData.split(',')
+        if (parts.length !== 2) {
+          console.error(`❌ Invalid data URL format for clip ${i}`)
+          continue
+        }
+        const base64Data = parts[1]
+        if (!base64Data) {
+          console.error(`❌ Empty base64 data for clip ${i}`)
+          continue
+        }
         const bytes = Buffer.from(base64Data, 'base64')
 
         const inputPath = path.join(tempDir, `input_${i}.png`)
@@ -160,11 +170,20 @@ export default async function handler(req: any, res: any) {
           duration: clip.durationMs / 1000
         })
       }
+        })
+      }
     }
 
     // Crear lista de archivos para concat
     const concatFilePath = path.join(tempDir, 'concat.txt')
     let concatContent = ''
+
+    // Validar que existan clips procesados antes de generar concat
+    if (!Array.isArray(processedClips) || processedClips.length === 0) {
+      console.warn('⚠️ No se encontraron clips procesados válidos para concatenar')
+      await removeDirectory(tempDir)
+      return sendJSON(res, 400, { error: 'No se encontraron clips válidos (imageData faltante o inválido).' })
+    }
 
     for (let i = 0; i < processedClips.length; i++) {
       const clip = processedClips[i]
@@ -172,7 +191,7 @@ export default async function handler(req: any, res: any) {
       concatContent += `duration ${clip.duration}\n`
     }
 
-    // Agregar el último archivo sin duration adicional
+    // Agregar el último archivo sin duration adicional, protegido por length > 0
     concatContent += `file '${processedClips[processedClips.length - 1].inputPath}'\n`
 
     await fs.writeFile(concatFilePath, concatContent)
@@ -187,42 +206,56 @@ export default async function handler(req: any, res: any) {
       '-safe', '0',
       '-i', concatFilePath,
       '-c:v', format === 'webm' ? 'libvpx-vp9' : 'libx264',
-      '-crf', '30',
-      '-pix_fmt', 'yuv420p',
-      '-r', parsedFps.toString(),
-      '-vf', `scale=${parsedWidth}:${parsedHeight}:force_original_aspect_ratio=decrease,pad=${parsedWidth}:${parsedHeight}:(ow-iw)/2:(oh-ih)/2`,
-      outputPath
-    ]
+     await new Promise<void>((resolve, reject) => {
+       const process = spawn(FFMPEG_PATH, ffmpegArgs, {
+         cwd: tempDir,
+         stdio: ['pipe', 'pipe', 'pipe']
+       })
 
-    console.log('🎬 Ejecutando FFmpeg directamente...')
-    console.log('📋 Comando:', FFMPEG_PATH, ffmpegArgs.join(' '))
+       let stderr = ''
+       let processKilled = false
 
-    // Ejecutar FFmpeg con spawn
-    await new Promise<void>((resolve, reject) => {
-      const process = spawn(FFMPEG_PATH, ffmpegArgs, {
-        cwd: tempDir,
-        stdio: ['pipe', 'pipe', 'pipe']
-      })
+       process.stderr?.on('data', (data) => {
+         stderr += data.toString()
+       })
 
-      let stderr = ''
+       // Configurar timeout
+       const timeout = setTimeout(() => {
+         console.error('⏰ FFmpeg timeout alcanzado, terminando proceso')
+         processKilled = true
+         process.kill('SIGKILL')
+         reject(new Error(`FFmpeg timeout after ${FFMPEG_TIMEOUT_MS}ms: ${stderr}`))
+       }, FFMPEG_TIMEOUT_MS)
 
-      process.stderr?.on('data', (data) => {
-        stderr += data.toString()
-      })
+       process.on('close', (code) => {
+         clearTimeout(timeout)
+         if (processKilled) return
+         if (code === 0) {
+           console.log('✅ FFmpeg finalizado correctamente')
+           resolve()
+         } else {
+           console.error('❌ FFmpeg falló con código:', code)
+           console.error('❌ Stderr:', stderr)
+           reject(new Error(`FFmpeg failed with code ${code}: ${stderr}`))
+         }
+       })
 
-      // Configurar timeout
-      const timeout = setTimeout(() => {
-        console.error('⏰ FFmpeg timeout alcanzado, terminando proceso')
-        process.kill('SIGKILL')
-        reject(new Error(`FFmpeg timeout after ${FFMPEG_TIMEOUT_MS}ms: ${stderr}`))
-      }, FFMPEG_TIMEOUT_MS)
-
-      process.on('close', (code) => {
-        clearTimeout(timeout)
-        if (code === 0) {
-          console.log('✅ FFmpeg finalizado correctamente')
-          resolve()
-        } else {
+       process.on('error', (err) => {
+         clearTimeout(timeout)
+         if (!processKilled) {
+           process.kill('SIGKILL')
+         }
+         console.error('❌ Error ejecutando FFmpeg:', err)
+         reject(err)
+       })
+     })
+         if (!processKilled) {
+           process.kill('SIGKILL')
+         }
+         console.error('❌ Error ejecutando FFmpeg:', err)
+         reject(err)
+       })
+     })
           console.error('❌ FFmpeg falló con código:', code)
           console.error('❌ Stderr:', stderr)
           reject(new Error(`FFmpeg failed with code ${code}: ${stderr}`))

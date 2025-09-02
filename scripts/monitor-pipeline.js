@@ -7,9 +7,6 @@
 
 const https = require('https');
 
-console.log('📊 MONITOR DE PIPELINE FRAMEFUSE');
-console.log('=' .repeat(60));
-
 // Configuración del proyecto
 const PROJECT_CONFIG = {
   group: 'gsusfc-group',
@@ -215,6 +212,8 @@ function showNextSteps() {
 
 // Función principal
 async function runMonitor() {
+  console.log('📊 MONITOR DE PIPELINE FRAMEFUSE');
+  console.log('=' .repeat(60));
   console.log(`📍 Proyecto: ${PROJECT_CONFIG.group}/${PROJECT_CONFIG.project}`);
   console.log(`🔗 URL Principal: ${PROJECT_CONFIG.urls.project}`);
   console.log('');
@@ -227,8 +226,15 @@ async function runMonitor() {
     checkUrl(PROJECT_CONFIG.urls.registry, 'Container Registry')
   ]);
 
-  checks.forEach(check => {
-    console.log(`   ${check.emoji} ${check.name}: ${check.accessible ? 'Accesible' : 'Requiere autenticación'}`);
+  const statusText = (c) => {
+    if (c.accessible) return 'Accesible';
+    if (c.emoji === '⏳') return 'Tiempo de espera agotado';
+    if (c.status === 401 || c.status === 403) return 'Requiere autenticación';
+    return 'No accesible';
+  };
+
+  checks.forEach((check) => {
+    console.log(`   ${check.emoji} ${check.name}: ${statusText(check)}`);
   });
 
   showPipelineInfo();

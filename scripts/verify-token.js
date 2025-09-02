@@ -7,8 +7,11 @@
 
 const https = require('https');
 
-console.log('🔐 VERIFICACIÓN DE PERSONAL ACCESS TOKEN');
-console.log('=' .repeat(50));
+// Función para mostrar banner
+function showBanner() {
+  console.log('🔐 VERIFICACIÓN DE PERSONAL ACCESS TOKEN');
+  console.log('=' .repeat(50));
+}
 
 // Función para probar token con GitLab API
 async function testToken(token) {
@@ -172,6 +175,7 @@ function showFixInstructions(error) {
 
 // Función principal
 async function verifyToken() {
+  showBanner();
   console.log('🔍 Ingresa tu Personal Access Token para verificar:');
   console.log('(El token debe empezar con "glpat-")');
   console.log('');
@@ -208,6 +212,7 @@ if (require.main === module) {
   const token = process.argv[2];
 
   if (token) {
+    showBanner();
     console.log(`🔐 Verificando token: ${token.substring(0, 10)}...`);
     console.log('');
 

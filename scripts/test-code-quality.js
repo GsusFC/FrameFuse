@@ -60,8 +60,13 @@ function checkDevDependencies() {
     { name: 'eslint', description: 'Linter de código' },
     { name: '@typescript-eslint/parser', description: 'Parser TypeScript para ESLint' },
     { name: '@typescript-eslint/eslint-plugin', description: 'Plugin TypeScript para ESLint' },
+    { name: 'eslint-plugin-import', description: 'Plugin ESLint para imports' },
+    { name: 'eslint-config-prettier', description: 'Configuración ESLint compatible con Prettier' },
     { name: 'typescript', description: 'Compilador TypeScript' }
   ];
+
+  let hasAllDeps = true;
+  const missingDeps = [];
 
   try {
     const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
@@ -73,14 +78,21 @@ function checkDevDependencies() {
       } else {
         console.log(`   ❌ ${name} - FALTA: ${description}`);
         console.log(`      💡 Instalar: pnpm add -D ${name}`);
+        hasAllDeps = false;
+        missingDeps.push(name);
       }
     });
+
+    if (missingDeps.length > 0) {
+      console.log(`\n   📋 Dependencias faltantes: ${missingDeps.join(', ')}`);
+    }
+
   } catch (error) {
     console.log(`   ❌ Error al leer package.json: ${error.message}`);
     return false;
   }
 
-  return true;
+  return hasAllDeps;
 }
 
 // Ejecutar ESLint
@@ -143,15 +155,18 @@ function checkPipelineConfig() {
       { pattern: 'typescript', description: 'Verificación TypeScript' }
     ];
 
+    let allPresent = true;
+
     checks.forEach(({ pattern, description }) => {
       if (gitlabCi.includes(pattern)) {
         console.log(`   ✅ ${description}`);
       } else {
         console.log(`   ❌ Falta: ${description}`);
+        allPresent = false;
       }
     });
 
-    return true;
+    return allPresent;
   } catch (error) {
     console.log(`   ❌ Error al leer .gitlab-ci.yml: ${error.message}`);
     return false;
@@ -217,7 +232,20 @@ async function runQualityTests() {
 
 // Ejecutar tests
 if (require.main === module) {
-  runQualityTests().catch(console.error);
+  runQualityTests()
+    .then((success) => {
+      if (success) {
+        console.log('\n🎉 Todos los tests de calidad pasaron exitosamente');
+        process.exit(0);
+      } else {
+        console.log('\n❌ Algunos tests de calidad fallaron');
+        process.exit(1);
+      }
+    })
+    .catch((error) => {
+      console.error('\n💥 Error ejecutando tests de calidad:', error);
+      process.exit(1);
+    });
 }
 
 module.exports = { runQualityTests };

@@ -117,9 +117,19 @@ function checkGitConfiguration() {
   try {
     // Verificar remote de GitLab
     const remotes = execSync('git remote -v', { encoding: 'utf8' });
-    const hasGitLab = remotes.includes('gitlab.com/gsusfc-group/GsusFC-project');
 
-    console.log(`   ${hasGitLab ? '✅' : '❌'} Remote GitLab: ${hasGitLab ? 'Configurado' : 'Falta configurar'}`);
+    // Usar variable de entorno o valor por defecto
+    const expectedProject = process.env.GITLAB_PROJECT || 'GsusFC-project';
+
+    // Regex flexible para detectar remotes de GitLab (SSH y HTTPS)
+    const gitlabRegex = new RegExp(`git(?:@|://)gitlab\\.com[:/].*${expectedProject}`, 'i');
+    const hasGitLab = gitlabRegex.test(remotes) || remotes.includes(`gitlab.com`) && remotes.includes(expectedProject);
+
+    if (!hasGitLab && !expectedProject) {
+      console.log('   ❌ Remote GitLab: No se pudo verificar - falta GITLAB_PROJECT en variables de entorno');
+    } else {
+      console.log(`   ${hasGitLab ? '✅' : '❌'} Remote GitLab: ${hasGitLab ? 'Configurado' : `Falta configurar para proyecto ${expectedProject}`}`);
+    }
 
     // Verificar commits pendientes
     const status = execSync('git status --porcelain', { encoding: 'utf8' });

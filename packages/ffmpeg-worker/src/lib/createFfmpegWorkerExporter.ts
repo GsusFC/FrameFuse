@@ -57,13 +57,17 @@ async function dataUrlToBytes(dataUrl: string): Promise<{ bytes: Uint8Array; ext
       throw new Error('Empty base64 data in data URL');
     }
 
-    // Verificar que es base64 válido
-    const base64Pattern = /^[A-Za-z0-9+/]+={0,2}$/;
-    if (!base64Pattern.test(data)) {
+    // Limpiar whitespace/newlines del base64
+    const cleanedData = data.replace(/\s+/g, '');
+
+    // Verificar que es base64 válido usando try/catch con Buffer.from()
+    try {
+      Buffer.from(cleanedData, 'base64');
+    } catch (error) {
       throw new Error('Invalid base64 data in data URL');
     }
 
-    const estimatedSize = (data.length * 3) / 4;
+    const estimatedSize = (cleanedData.length * 3) / 4;
     const MAX_IMAGE_SIZE = 50 * 1024 * 1024; // 50MB por imagen
 
     console.log('📏 Estimated size:', Math.round(estimatedSize / 1024), 'KB');

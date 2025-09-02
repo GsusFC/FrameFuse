@@ -347,6 +347,8 @@ export function ExportPanel() {
                 try {
                   return await new Promise<any>((resolve, reject) => {
                     const img = new Image();
+                    // Prevent canvas taint for CORS-enabled assets
+                    img.crossOrigin = 'anonymous';
 
                     img.onload = () => {
                       try {
@@ -395,6 +397,23 @@ export function ExportPanel() {
 
                     img.onerror = () => {
                       console.error(`❌ Image failed to load for clip ${index + 1}: ${clip.src}`);
+                      reject(new Error(`Image failed to load for clip ${index + 1}`));
+                    };
+
+                    img.src = clip.src;
+                  });
+                } catch (error) {
+                  console.error(`❌ Image compression failed for clip ${index + 1}:`, error);
+                  // Return a placeholder object instead of failing the entire export
+                  return {
+                    imageData: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', // 1x1 transparent PNG
+                    durationMs: clip.durationMs,
+                    transitionAfter: clip.transitionAfter,
+                    error: `Compression failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+                  };
+                }
+              }));
+              }));
                       reject(new Error(`Image failed to load for clip ${index + 1}`));
                     };
 

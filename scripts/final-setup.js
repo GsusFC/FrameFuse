@@ -45,9 +45,11 @@ async function main() {
 
   // Verificar token
   try {
-    const result = execSync(`node scripts/verify-token.js "${token}"`, {
+    const result = execSync('node scripts/verify-token.js', {
       encoding: 'utf8',
-      timeout: 10000
+      timeout: 10000,
+      env: { ...process.env, GITLAB_TOKEN: token },
+      input: token
     });
 
     if (result.includes('✅ TOKEN VÁLIDO')) {
@@ -71,7 +73,7 @@ async function main() {
   console.log('');
   console.log('   📋 Variable CI/CD:');
   console.log('   • Key: CI_REGISTRY_PASSWORD');
-  console.log('   • Value:', token);
+  console.log('   • Value: glpat-' + '*'.repeat(20) + '...(copiar del paso anterior)');
   console.log('   • ✅ Protect variable');
   console.log('   • ✅ Mask variable');
   console.log('');
@@ -79,13 +81,16 @@ async function main() {
   console.log('2️⃣ URLs A VISITAR:');
   console.log('');
   console.log('   🔗 Variables CI/CD:');
-  console.log('   https://gitlab.com/gsusfc-group/GsusFC-project/-/settings/ci_cd');
+  const projectPath = process.env.GITLAB_PROJECT_PATH || 'gsusfc-group/GsusFC-project';
+
+  console.log('   🔗 Variables CI/CD:');
+  console.log(`   https://gitlab.com/${projectPath}/-/settings/ci_cd`);
   console.log('');
   console.log('   🤖 GitLab Duo:');
-  console.log('   https://gitlab.com/gsusfc-group/GsusFC-project/-/settings/gitlab_duo');
+  console.log(`   https://gitlab.com/${projectPath}/-/settings/gitlab_duo`);
   console.log('');
   console.log('   🐳 Container Registry:');
-  console.log('   https://gitlab.com/gsusfc-group/GsusFC-project/-/settings/general');
+  console.log(`   https://gitlab.com/${projectPath}/-/settings/general`);
   console.log('');
 
   console.log('3️⃣ VERIFICACIÓN FINAL:');

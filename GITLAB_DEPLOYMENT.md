@@ -43,8 +43,20 @@ En GitLab: **Settings > CI/CD > Variables**
 
 ```bash
 # Variables requeridas para el pipeline
-CI_REGISTRY_PASSWORD = [Tu token de acceso personal]
+# IMPORTANTE: Configurar estas variables en GitLab UI (Settings > CI/CD > Variables)
+# y marcarlas como "masked" y "protected" para mayor seguridad
+
+# Opción recomendada: Usar CI_JOB_TOKEN (automático, no requiere configuración)
+# O crear un Deploy Token específico en lugar de Personal Access Token
+
+# Si usas Personal Access Token (no recomendado):
+CI_REGISTRY_PASSWORD = [Tu token - DEBE ser marcado como masked y protected]
 CI_REGISTRY_USER = [Tu usuario GitLab]
+
+# Alternativa recomendada: Usar Deploy Token
+# 1. Ve a Settings > Repository > Deploy Tokens
+# 2. Crea un token con permisos "read_registry" y "write_registry"
+# 3. Usa el token generado como CI_REGISTRY_PASSWORD
 ```
 
 ### 4. Habilitar GitLab Container Registry
@@ -346,65 +358,13 @@ node scripts/framefuse-mcp-server.js
 
 ## 🔍 Code Quality Gates - Control de Calidad Automático
 
-### **¿Qué son los Code Quality Gates?**
-Los **Code Quality Gates** son verificaciones automáticas que analizan la calidad del código y pueden bloquear deployments si no se cumplen ciertos estándares.
+Para evitar duplicación, esta sección referencia la configuración canónica:
 
-### **Beneficios para FrameFuse:**
+- `.codeclimate.yml`: define ESLint, TypeScript, duplicación y complejidad, además de prepare fetch.
+- `.eslintrc.js`: reglas de ESLint utilizadas por Code Climate y análisis local.
+- `scripts/test-code-quality.js`: script para validar rápidamente ESLint/TypeScript y archivos clave.
 
-#### **🎯 Análisis Automático:**
-- **ESLint**: Verificación de código TypeScript/JavaScript
-- **TypeScript Compiler**: Validación de tipos
-- **Security Scans**: Detección de vulnerabilidades
-- **Code Duplication**: Identificación de código duplicado
-- **Complexity Analysis**: Medición de complejidad ciclomática
-
-#### **🚫 Bloqueo Inteligente:**
-```yaml
-# El pipeline se bloquea si:
-- Hay errores de TypeScript
-- Código no cumple estándares ESLint
-- Vulnerabilidades de seguridad críticas
-- Cobertura de tests insuficiente (futuro)
-```
-
-#### **📊 Reportes Detallados:**
-- Reportes en formato JSON para GitLab
-- Visualización en Merge Requests
-- Historial de calidad por commit
-- Tendencias de mejora continua
-
-### **Archivos de Configuración:**
-
-#### **`.codeclimate.yml`** - Configuración principal:
-```yaml
-version: "2"
-checks:
-  typescript:
-    enabled: true
-  security:
-    enabled: true
-engines:
-  eslint:
-    enabled: true
-  typescript:
-    enabled: true
-```
-
-#### **`.eslintrc.js`** - Reglas de linting:
-```javascript
-module.exports = {
-  extends: [
-    'eslint:recommended',
-    '@typescript-eslint/recommended',
-    'plugin:import/recommended'
-  ],
-  rules: {
-    '@typescript-eslint/no-unused-vars': 'error',
-    '@typescript-eslint/no-explicit-any': 'warn',
-    'import/order': 'error'
-  }
-}
-```
+El pipeline puede bloquearse si no se cumplen los estándares de linting/typing o hay vulnerabilidades críticas, según lo definido en `.codeclimate.yml` y `.gitlab-ci.yml`.
 
 ## 🔧 GitLab CI/CD Inputs - Configuración Avanzada
 
@@ -422,35 +382,46 @@ Los **inputs** son parámetros tipados y validados que permiten personalizar pip
 | `registry_prefix` | string | `""` | Prefijo para el registry de Docker |
 | `health_check_enabled` | boolean | `true` | Habilitar health checks automáticos |
 
-### **Ejemplos de Uso:**
+### **Ejemplos de Uso (Child Pipelines):**
+
+En GitLab CI, `include` es de nivel superior. Dentro de un job se debe usar `trigger: { include: ..., inputs: ... }`. Usa `strategy: depend` si el pipeline padre debe esperar al hijo.
 
 #### **1. Despliegue a Producción con Node.js 20:**
 ```yaml
-include:
-  - local: '.gitlab-ci.yml'
-    inputs:
-      environment: "production"
-      node_version: "20"
-      enable_mcp: true
+production_deployment:
+  trigger:
+    include:
+      - local: '.gitlab-ci.yml'
+        inputs:
+          environment: "production"
+          node_version: "20"
+          enable_mcp: true
+    strategy: depend
 ```
 
 #### **2. Despliegue a Staging sin MCP:**
 ```yaml
-include:
-  - local: '.gitlab-ci.yml'
-    inputs:
-      environment: "staging"
-      enable_mcp: false
+staging_deployment:
+  trigger:
+    include:
+      - local: '.gitlab-ci.yml'
+        inputs:
+          environment: "staging"
+          enable_mcp: false
+    strategy: depend
 ```
 
 #### **3. Desarrollo con argumentos personalizados:**
 ```yaml
-include:
-  - local: '.gitlab-ci.yml'
-    inputs:
-      environment: "development"
-      docker_build_args: "--build-arg BUILDKIT_INLINE_CACHE=1"
-      registry_prefix: "dev-"
+dev_deployment:
+  trigger:
+    include:
+      - local: '.gitlab-ci.yml'
+        inputs:
+          environment: "development"
+          docker_build_args: "--build-arg BUILDKIT_INLINE_CACHE=1"
+          registry_prefix: "dev-"
+    strategy: depend
 ```
 
 ### **Ventajas de Usar Inputs:**
@@ -465,30 +436,39 @@ include:
 
 1. **Para desarrollo rápido:**
    ```yaml
-   include:
-     - local: '.gitlab-ci.yml'
-       inputs:
-         environment: "development"
-         enable_mcp: false
+   dev_quick:
+     trigger:
+       include:
+         - local: '.gitlab-ci.yml'
+           inputs:
+             environment: "development"
+             enable_mcp: false
+       strategy: depend
    ```
 
 2. **Para staging con monitoreo:**
    ```yaml
-   include:
-     - local: '.gitlab-ci.yml'
-       inputs:
-         environment: "staging"
-         enable_mcp: true
+   staging_monitor:
+     trigger:
+       include:
+         - local: '.gitlab-ci.yml'
+           inputs:
+             environment: "staging"
+             enable_mcp: true
+       strategy: depend
    ```
 
 3. **Para producción optimizada:**
    ```yaml
-   include:
-     - local: '.gitlab-ci.yml'
-       inputs:
-         environment: "production"
-         node_version: "20"
-         enable_mcp: true
+   production_optimized:
+     trigger:
+       include:
+         - local: '.gitlab-ci.yml'
+           inputs:
+             environment: "production"
+             node_version: "20"
+             enable_mcp: true
+       strategy: depend
    ```
 
 ## 📋 Checklist Final

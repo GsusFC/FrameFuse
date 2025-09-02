@@ -9,7 +9,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 
 console.log('🔍 FRAMEFUSE - MONITOR CODE QUALITY GATES');
-console.log('=' .repeat(60));
+console.log('='.repeat(60));
 
 // Función para ejecutar comandos de forma segura
 function runCommand(command, description) {
@@ -37,7 +37,32 @@ function checkRepositoryStatus() {
   const lastCommit = runCommand('git log -1 --oneline', 'Obteniendo último commit');
 
   if (branch) console.log(`   ✅ Rama: ${branch}`);
-  if (remote) console.log(`   ✅ Remote: ${remote.replace(/https:\/\/.*@/, 'https://').replace(/\.git$/, '')}`);
+  if (remote) {
+    try {
+      const clean = remote.replace(/\.git$/, '');
+      let candidate = clean;
+      // Convert scp-like Git URLs (git@host:group/repo) to ssh:// form for URL parsing
+      if (/^[^@]+@[^:]+:/.test(candidate)) {
+        const m = candidate.match(/^([^@]+)@([^:]+):(.+)$/);
+        if (m) {
+          const [, user, host, repoPath] = m;
+          candidate = `ssh://${user}@${host}/${repoPath}`;
+        }
+      }
+      const url = new URL(candidate);
+      url.username = '';
+      url.password = '';
+      // toString() may add a trailing slash; remove for cleaner display
+      const safe = url.toString().replace(/\/$/, '');
+      console.log(`   ✅ Remote: ${safe}`);
+    } catch {
+      // Fallback: basic scrub without credentials
+      const safe = remote
+        .replace(/https?:\/\/[^@]+@/, 'https://')
+        .replace(/\.git$/, '');
+      console.log(`   ✅ Remote: ${safe}`);
+    }
+  }
   if (lastCommit) console.log(`   ✅ Último commit: ${lastCommit}`);
 }
 
@@ -49,8 +74,7 @@ function checkConfigurationFiles() {
     { file: '.gitlab-ci.yml', description: 'Pipeline CI/CD' },
     { file: '.codeclimate.yml', description: 'Configuración CodeClimate' },
     { file: 'eslint.config.js', description: 'Configuración ESLint' },
-    { file: 'tsconfig.json', description: 'Configuración TypeScript' },
-    { file: 'test-quality-gates.ts', description: 'Archivo de prueba con errores' }
+    { file: 'tsconfig.json', description: 'Configuración TypeScript' }
   ];
 
   let allPresent = true;
@@ -70,11 +94,7 @@ function checkConfigurationFiles() {
         }
       }
 
-      if (file === 'test-quality-gates.ts') {
-        const content = fs.readFileSync(file, 'utf8');
-        const errorCount = (content.match(/❌ ERROR/g) || []).length;
-        console.log(`      🎯 Contiene ${errorCount} errores intencionales`);
-      }
+
     } else {
       console.log(`   ❌ ${file} - FALTA: ${description}`);
       allPresent = false;
@@ -90,7 +110,8 @@ function simulateQualityAnalysis() {
 
   try {
     console.log('   🔄 Ejecutando ESLint...');
-    const eslintResult = execSync('npx eslint test-quality-gates.ts --format=compact', {
+    // Analyze all TypeScript files or specify a different test file
+    const eslintResult = execSync('npx eslint . --ext .ts,.tsx --format=compact', {
       encoding: 'utf8',
       timeout: 10000
     });

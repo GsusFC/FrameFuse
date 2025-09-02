@@ -7,9 +7,6 @@
 
 const https = require('https');
 
-console.log('✅ VERIFICACIÓN POST-DESPLIEGUE FRAMEFUSE');
-console.log('=' .repeat(60));
-
 const CONFIG = {
   project: 'gsusfc-group/GsusFC-project',
   urls: {
@@ -22,12 +19,63 @@ const CONFIG = {
 // Función para verificar URL
 async function checkUrl(url, name) {
   return new Promise((resolve) => {
-    const req = https.request(url, { method: 'HEAD' }, (res) => {
-      resolve({
-        name,
-        status: res.statusCode,
-        accessible: res.statusCode >= 200 && res.statusCode < 400
+    const makeRequest = (method = 'HEAD') => {
+      const req = https.request(url, { method }, (res) => {
+        const status = res.statusCode;
+        let accessible = false;
+        let requiresAuth = false;
+
+        // Solo 2xx se considera accesible
+        if (status >= 200 && status < 300) {
+          accessible = true;
+        } else if (status >= 300 && status < 400) {
+          // Verificar si es redirect a sign-in
+          const location = res.headers.location;
+          if (location && location.includes('/users/sign_in')) {
+            requiresAuth = true;
+          }
+        }
+
+        const result = { name, status, accessible };
+        if (requiresAuth) {
+          result.requiresAuth = true;
+        }
+        resolve(result);
       });
+
+      req.on('error', () => resolve({ name, status: null, accessible: false }));
+      req.setTimeout(5000, () => {
+        req.destroy();
+        resolve({ name, status: null, accessible: false });
+      });
+      req.end();
+    };
+
+    // Intentar HEAD primero, fallback a GET si es 405
+    const req = https.request(url, { method: 'HEAD' }, (res) => {
+      if (res.statusCode === 405) {
+        // Fallback a GET
+        makeRequest('GET');
+      } else {
+        const status = res.statusCode;
+        let accessible = false;
+        let requiresAuth = false;
+
+        if (status >= 200 && status < 300) {
+          accessible = true;
+        } else if (status >= 300 && status < 400) {
+          const location = res.headers.location;
+          if (location && location.includes('/users/sign_in')) {
+            requiresAuth = true;
+          }
+        }
+
+        const result = { name, status, accessible };
+        if (requiresAuth) {
+          result.requiresAuth = true;
+        }
+        resolve(result);
+      }
     });
 
     req.on('error', () => resolve({ name, status: null, accessible: false }));
@@ -131,6 +179,8 @@ function showTroubleshooting() {
 
 // Función principal
 async function runPostDeploymentCheck() {
+  console.log('✅ VERIFICACIÓN POST-DESPLIEGUE FRAMEFUSE');
+  console.log('=' .repeat(60));
   console.log(`📍 Proyecto: ${CONFIG.project}`);
   console.log('⏱️  Fecha de verificación:', new Date().toLocaleString());
   console.log('');

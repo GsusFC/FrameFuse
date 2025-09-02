@@ -3,54 +3,64 @@
 
 # Ejemplo 1: Despliegue a producción con configuración completa
 production_deployment:
-  include:
-    - local: '.gitlab-ci.yml'
-    inputs:
-      environment: "production"
-      node_version: "18"
-      enable_mcp: true
-      registry_prefix: ""
-      health_check_enabled: true
+  trigger:
+    include:
+      - local: '.gitlab-ci.yml'
+        inputs:
+          environment: "production"
+          node_version: "18"
+          enable_mcp: true
+          registry_prefix: ""
+          health_check_enabled: true
+    strategy: depend
 
 # Ejemplo 2: Despliegue a staging con Node.js 20
 staging_deployment:
-  include:
-    - local: '.gitlab-ci.yml'
-    inputs:
-      environment: "staging"
-      node_version: "20"
-      enable_mcp: true
-      registry_prefix: "staging-"
-      health_check_enabled: true
+  trigger:
+    include:
+      - local: '.gitlab-ci.yml'
+        inputs:
+          environment: "staging"
+          node_version: "20"
+          enable_mcp: true
+          registry_prefix: "staging-"
+          health_check_enabled: true
+    strategy: depend
 
 # Ejemplo 3: Desarrollo sin MCP (más rápido para desarrollo)
 development_deployment:
-  include:
-    - local: '.gitlab-ci.yml'
-    inputs:
-      environment: "development"
-      node_version: "18"
-      enable_mcp: false
-      registry_prefix: "dev-"
-      health_check_enabled: false
+  trigger:
+    include:
+      - local: '.gitlab-ci.yml'
+        inputs:
+          environment: "development"
+          node_version: "18"
+          enable_mcp: false
+          registry_prefix: "dev-"
+          health_check_enabled: false
+    strategy: depend
 
 # Ejemplo 4: Configuración mínima (usa valores por defecto)
 minimal_deployment:
-  include:
-    - local: '.gitlab-ci.yml'
-    # Sin inputs = usa valores por defecto
+  trigger:
+    include:
+      - local: '.gitlab-ci.yml'
+    strategy: depend
+  # Sin inputs = usa valores por defecto
 
 # Ejemplo 5: Configuración personalizada con argumentos Docker
 custom_deployment:
-  include:
-    - local: '.gitlab-ci.yml'
-    inputs:
-      environment: "production"
-      node_version: "18"
-      enable_mcp: true
-      docker_build_args: "--build-arg BUILDKIT_INLINE_CACHE=1 --no-cache"
-      registry_prefix: "custom-"
-      health_check_enabled: true
+  trigger:
+    include:
+      - local: '.gitlab-ci.yml'
+        inputs:
+          environment: "production"
+          node_version: "18"
+          enable_mcp: true
+          docker_build_args: "--build-arg BUILDKIT_INLINE_CACHE=1 --no-cache"
+          registry_prefix: "custom-"
+          health_check_enabled: true
+    strategy: depend
 
 # Ejemplo 6: Trigger manual con diferentes entornos
 trigger_examples:
@@ -106,11 +116,13 @@ multi_environment_pipeline:
 
   .deploy_template: &deploy_template
     stage: deploy
-    include:
-      - local: '.gitlab-ci.yml'
-        inputs:
-          environment: $ENVIRONMENT
-          node_version: "18"
-          enable_mcp: true
+    trigger:
+      include:
+        - local: '.gitlab-ci.yml'
+          inputs:
+            environment: $ENVIRONMENT
+            node_version: "18"
+            enable_mcp: true
+      strategy: depend
     script:
       - echo "Deploying to $ENVIRONMENT"

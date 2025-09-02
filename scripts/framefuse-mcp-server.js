@@ -153,8 +153,7 @@ class FrameFuseMCPServer {
     switch (uri) {
       case 'framefuse://gitlab/pipeline-data':
         return {
-          uri,
-          mimeType: 'application/json',
+          type: 'text',
           text: JSON.stringify({
             total_pipelines: 45,
             average_duration: '12.5 min',
@@ -167,8 +166,7 @@ class FrameFuseMCPServer {
 
       case 'framefuse://docker/registry-info':
         return {
-          uri,
-          mimeType: 'application/json',
+          type: 'text',
           text: JSON.stringify({
             total_images: 23,
             latest_tag: 'main-abc1234',
@@ -185,8 +183,7 @@ class FrameFuseMCPServer {
 
       case 'framefuse://deployment/metrics':
         return {
-          uri,
-          mimeType: 'application/json',
+          type: 'text',
           text: JSON.stringify({
             uptime: '99.9%',
             average_response_time: '245ms',
@@ -339,7 +336,7 @@ ${optimizations.recommendations.map(rec => `- ${rec}`).join('\n')}
 ### ⚙️ Cache Configuration:
 \`\`\`yaml
 cache:
-  key: ${CI_COMMIT_REF_SLUG}
+  key: \${CI_COMMIT_REF_SLUG}
   paths:
     - node_modules/
     - packages/*/node_modules/

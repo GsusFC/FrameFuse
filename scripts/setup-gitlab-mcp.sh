@@ -3,7 +3,12 @@
 # 🚀 FrameFuse GitLab + MCP Setup Script
 # Configuración automática para despliegue con IA integrada
 
-set -e
+# Configuración estricta de shell para mayor seguridad
+set -euo pipefail
+IFS=$'\n\t'
+
+# Trap para manejo de errores
+trap 'echo "❌ Error en línea $LINENO. Saliendo..." >&2; exit 1' ERR
 
 echo "🎬 FrameFuse - Configuración GitLab + MCP"
 echo "=========================================="
@@ -49,6 +54,7 @@ required_files=(
     "Dockerfile"
     ".gitlab-mcp-config.yaml"
     "scripts/framefuse-mcp-server.js"
+    "scripts/test-mcp.js"
     "scripts/README-MCP.md"
     "GITLAB_DEPLOYMENT.md"
 )
@@ -92,9 +98,12 @@ print_success "Dependencias instaladas"
 # Paso 4: Verificar que todo compila
 print_status "Verificando compilación TypeScript..."
 
-if command -v tsc &> /dev/null; then
+# Intentar usar el toolchain del workspace primero
+if pnpm exec -- tsc --noEmit --skipLibCheck &> /dev/null; then
+    print_success "TypeScript compilación exitosa (workspace toolchain)"
+elif command -v tsc &> /dev/null; then
     npx tsc --noEmit --skipLibCheck
-    print_success "TypeScript compilación exitosa"
+    print_success "TypeScript compilación exitosa (global toolchain)"
 else
     print_warning "TypeScript CLI no disponible, saltando verificación"
 fi

@@ -251,6 +251,16 @@ async function renderHandler(req, res) {
     console.log('📁 Directorio temporal creado:', tempDir);
 
     const { project, format = 'webm', fps = 30, width = 1920, height = 1080 } = req.body;
+   const allowed = new Set(['mp4', 'webm', 'gif']);
+   if (!allowed.has(String(format).toLowerCase())) {
+     return res.status(400).json({ error: `Formato no soportado: ${format}` });
+   }
+   if (!Number.isFinite(fps) || fps < 1 || fps > 60) {
+     return res.status(400).json({ error: `FPS inválido: ${fps}` });
+   }
+   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+     return res.status(400).json({ error: `Resolución inválida: ${width}x${height}` });
+   }
 
     if (!project || !project.clips || !Array.isArray(project.clips)) {
       return res.status(400).json({ error: 'Proyecto inválido o sin clips' });
@@ -291,12 +301,14 @@ async function renderHandler(req, res) {
 
     // 🎬 NUEVO: Verificar si hay transiciones para procesar
     console.log('🎬 Analizando transiciones...');
+    if (processedClips.length === 0) {
+      return res.status(400).json({ error: 'No se encontraron clips válidos (imageData faltante o inválido).' });
+    }
 
     const hasTransitions = processedClips.some(clip => clip.transitionAfter && clip.transitionAfter.durationMs > 0);
 
     // 🎯 REPLICAR EXACTAMENTE EL ALGORITMO DEL PREVIEW
     console.log('✅ Replicando algoritmo exacto del preview Canvas 2D...');
-
     // Calcular duración total EXACTAMENTE como el preview (línea 52 de PreviewPanel.tsx)
     const totalDurationMs = processedClips.reduce((sum, c) => sum + c.durationMs, 0) || 1;
     const totalDurationSec = totalDurationMs / 1000;
@@ -313,312 +325,20 @@ async function renderHandler(req, res) {
 
     // Limpiar archivos temporales
     await fs.rm(tempDir, { recursive: true, force: true });
-    console.log('🧹 Archivos temporales limpiados');
-
     // Configurar headers de respuesta
-    res.setHeader('Content-Type', `video/${format}`);
+    const contentType = format === 'gif' ? 'image/gif' : `video/${format}`;
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', outputData.length);
+    res.setHeader('Content-Disposition', `inline; filename="rendered_video.${format}"`);
     res.setHeader('Content-Length', outputData.length);
     res.setHeader('Content-Disposition', `inline; filename="rendered_video.${format}"`);
 
     // Enviar el video
     res.status(200).send(outputData);
     console.log('🎉 Video enviado exitosamente replicando preview');
+    return;
 
-      // 🎯 ALGORITMO HÍBRIDO: Duraciones calculadas para preservar visibilidad
-      console.log('📊 Calculando duraciones híbridas para preservar todos los clips...');
-
-      // Calcular cuánto tiempo necesita cada input para ser completamente visible
-      // más cualquier transición que lo involucre
-      const inputDurations = [];
-      let cumulativeTime = 0;
-
-      for (let i = 0; i < processedClips.length; i++) {
-        const clip = processedClips[i];
-        let inputDuration;
-
-        if (i === 0) {
-          // Primer clip: su duración completa
-          inputDuration = clip.duration;
-          cumulativeTime = clip.duration;
-        } else if (i === processedClips.length - 1) {
-          // Último clip: solo necesita su duración (xfade maneja el resto)
-          inputDuration = clip.duration;
-        } else {
-          // Clips del medio: necesitan durar lo suficiente para ser visibles
-          // después de la transición anterior y antes de la siguiente
-          const prevTransition = processedClips[i - 1].transitionAfter;
-          const currentTransition = clip.transitionAfter;
-
-          let timeNeeded = clip.duration;
-
-          // Si hay transición después, agregar tiempo para la transición
-          if (currentTransition && currentTransition.durationMs > 0) {
-            const trSec = Math.max(0.3, Math.min(toSec(currentTransition.durationMs), 1.0));
-            timeNeeded += trSec * 0.5; // Agregar la mitad de la transición
-          }
-
-          inputDuration = timeNeeded;
-        }
-
-        // Validar que las transiciones sean posibles
-        if (i < processedClips.length - 1 && clip.transitionAfter && clip.transitionAfter.durationMs > 0) {
-          const trSec = Math.max(0.3, Math.min(toSec(clip.transitionAfter.durationMs), 1.0));
-
-          // Si la transición es más larga que el clip, ajustar
-          if (trSec >= clip.duration * 0.9) {
-            console.log(`⚠️ Transición ${trSec}s es muy larga para clip ${clip.duration}s, ajustando transición a ${clip.duration * 0.5}s`);
-            clip.transitionAfter.durationMs = Math.floor(clip.duration * 0.5 * 1000);
-          }
-        }
-
-        inputDurations.push(inputDuration);
-        console.log(`📊 Input ${i}: duración=${inputDuration}s (clip original=${clip.duration}s, ${i === 0 ? 'primero' : i === processedClips.length - 1 ? 'último' : 'medio'})`);
-        inputs.push('-loop', '1', '-t', inputDuration.toString(), '-i', clip.inputPath);
-      }
-
-      // Calcular duración total esperada del video final
-      let expectedDuration = 0;
-      for (let i = 0; i < processedClips.length; i++) {
-        expectedDuration += processedClips[i].duration;
-        if (i < processedClips.length - 1 && processedClips[i].transitionAfter && processedClips[i].transitionAfter.durationMs > 0) {
-          expectedDuration -= toSec(processedClips[i].transitionAfter.durationMs); // Restar superposición
-        }
-      }
-      console.log(`📊 Duración total esperada del video: ${expectedDuration}s`);
-
-
-      // Construir cadena de filtros con transiciones
-      let currentStream = '[0:v]';
-
-      for (let i = 0; i < processedClips.length - 1; i++) {
-        const currentClip = processedClips[i];
-        const transition = currentClip.transitionAfter;
-        const outputStream = `[v${i}]`;
-
-        if (transition && transition.durationMs > 0) {
-          // 🎯 TIMING PRECISO: Usar duraciones exactas validadas
-          const trSec = Math.max(0.3, Math.min(toSec(transition.durationMs), 1.0));
-          const offset = Math.max(0, +(currentClip.duration - trSec).toFixed(2));
-
-          // Validación crítica: asegurar que el offset sea válido
-          if (offset < 0.1) {
-            console.log(`⚠️ Offset muy pequeño (${offset}s), ajustando a 0.1s`);
-            const adjustedOffset = 0.1;
-            const adjustedDuration = Math.min(trSec, currentClip.duration - adjustedOffset);
-            console.log(`🎬 Procesando transición: ${transition.pluginId} (duración: ${adjustedDuration}s, offset: ${adjustedOffset}s) [AJUSTADA]`);
-
-            let xfadeType = mapTransitionIdToXfade(transition.pluginId);
-            console.log(`✅ Transición mapeada: ${transition.pluginId} → ${xfadeType}`);
-
-            filterParts.push(`${currentStream}[${i + 1}:v]xfade=transition=${xfadeType}:duration=${adjustedDuration.toFixed(3)}:offset=${adjustedOffset.toFixed(3)}${outputStream}`);
-          } else {
-            // Timing normal
-            console.log(`🎬 Procesando transición: ${transition.pluginId} (duración: ${trSec}s, offset: ${offset}s)`);
-
-            let xfadeType = mapTransitionIdToXfade(transition.pluginId);
-            console.log(`✅ Transición mapeada: ${transition.pluginId} → ${xfadeType}`);
-
-            filterParts.push(`${currentStream}[${i + 1}:v]xfade=transition=${xfadeType}:duration=${trSec.toFixed(3)}:offset=${offset.toFixed(3)}${outputStream}`);
-          }
-        } else {
-          // Sin transición, concatenar directamente
-          filterParts.push(`${currentStream}[${i + 1}:v]concat=n=2:v=1:a=0${outputStream}`);
-        }
-
-        currentStream = outputStream;
-      }
-
-      // Agregar scaling al final del filtro complejo
-      const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`;
-
-      if (format === 'gif') {
-        filterParts.push(`${currentStream}${scaleFilter},fps=${fps}[final]`);
-      } else {
-        filterParts.push(`${currentStream}${scaleFilter}[final]`);
-      }
-
-      // Unir todas las partes con punto y coma
-      const filterComplex = filterParts.join(';');
-
-      console.log('🎬 Filtros construidos:', filterComplex);
-
-      // 🎯 ALGORITMO REDISEÑADO: Dejar que xfade determine la duración automáticamente
-      // Con duraciones exactas de inputs, no necesitamos calcular duración total
-      console.log(`📊 Usando duraciones exactas - xfade determinará la duración final automáticamente`);
-
-      // Guardar para usar en FFmpeg (sin totalDuration)
-      var transitionData = {
-        filterComplex: filterComplex,
-        inputs: inputs,
-        finalStream: 'final' // Usar el stream final con scaling
-      };
-    } else {
-      console.log('ℹ️ Sin transiciones o clip único, usando método simple');
-
-      // Para un solo clip o sin transiciones, usar filtro simple
-      if (processedClips.length === 1) {
-        console.log('📸 Procesando clip único con filtros simples');
-
-        let inputs = [];
-        inputs.push('-loop', '1', '-t', processedClips[0].duration.toString(), '-i', processedClips[0].inputPath);
-
-        const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`;
-        let filterComplex;
-
-        if (format === 'gif') {
-          filterComplex = `[0:v]${scaleFilter},fps=${fps}[final]`;
-        } else {
-          filterComplex = `[0:v]${scaleFilter}[final]`;
-        }
-
-        var transitionData = {
-          filterComplex: filterComplex,
-          inputs: inputs,
-          finalStream: 'final' // Para clip único, xfade determinará la duración
-        };
-      } else {
-        var transitionData = null;
-      }
-    }
-
-    const outputPath = path.join(tempDir, `output.${format}`);
-
-    // 🎬 NUEVO: Construir comando FFmpeg según si hay transiciones
-    let ffmpegArgs;
-
-    if (transitionData) {
-      console.log('🎬 Usando filtros complejos para transiciones');
-
-      // Comando con filtros complejos (scaling ya incluido)
-      // CAMBIO CRÍTICO: Eliminar -t y dejar que xfade determine la duración
-      ffmpegArgs = [
-        '-y', // Sobrescribir archivos
-        ...transitionData.inputs, // Todos los inputs de imágenes
-        '-filter_complex', transitionData.filterComplex,
-        '-map', `[${transitionData.finalStream}]` // Mapear el stream final
-        // NO especificar -t, dejar que xfade determine la duración natural
-      ];
-
-      console.log(`🎬 Dejando que xfade determine la duración natural (sin -t)`);
-
-      // Configuración específica por formato (sin -vf porque ya está en filter_complex)
-      if (format === 'gif') {
-        ffmpegArgs.push(
-          '-loop', '0',
-          outputPath
-        );
-      } else {
-        ffmpegArgs.push(
-          '-c:v', format === 'webm' ? 'libvpx-vp9' : 'libx264',
-          '-crf', '30',
-          '-pix_fmt', 'yuv420p',
-          '-r', fps.toString(),
-          outputPath
-        );
-      }
-    } else {
-      console.log('🎬 Usando concatenación simple (sin transiciones)');
-
-      // Fallback: concatenación simple
-      const concatFilePath = path.join(tempDir, 'concat.txt');
-      let concatContent = '';
-      let concatTotalDuration = 0;
-
-      for (let i = 0; i < processedClips.length; i++) {
-        const clip = processedClips[i];
-        concatContent += `file '${clip.inputPath}'\n`;
-        concatContent += `duration ${clip.duration}\n`;
-        concatTotalDuration += clip.duration;
-      }
-      // 🎯 CORRECCIÓN: NO agregar línea final sin duration (causa extensión indefinida)
-
-      console.log(`🎬 Duración total concatenación: ${concatTotalDuration}s`);
-      console.log(`📝 Contenido del archivo concat simple:\n${concatContent}`);
-      await fs.writeFile(concatFilePath, concatContent);
-
-      ffmpegArgs = [
-        '-y',
-        '-f', 'concat',
-        '-safe', '0',
-        '-i', concatFilePath,
-        '-t', concatTotalDuration.toString() // 🎯 CRÍTICO: Especificar duración exacta
-      ];
-
-      // Configuración específica por formato
-      if (format === 'gif') {
-        ffmpegArgs.push(
-          '-vf', `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=${fps}`,
-          '-loop', '0',
-          outputPath
-        );
-      } else {
-        ffmpegArgs.push(
-          '-c:v', format === 'webm' ? 'libvpx-vp9' : 'libx264',
-          '-crf', '30',
-          '-pix_fmt', 'yuv420p',
-          '-r', fps.toString(),
-          '-vf', `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
-          outputPath
-        );
-      }
-    }
-
-    console.log('🎬 Ejecutando FFmpeg...');
-    console.log('📋 Comando:', FFMPEG_CMD, ffmpegArgs.join(' '));
-
-    // Ejecutar FFmpeg con spawn
-    await new Promise((resolve, reject) => {
-      const process = spawn(FFMPEG_CMD, ffmpegArgs, {
-        cwd: tempDir,
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-
-      let stderr = '';
-      
-      process.stderr?.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      process.on('close', (code) => {
-        if (code === 0) {
-          console.log('✅ FFmpeg finalizado correctamente');
-          resolve();
-        } else {
-          console.error('❌ FFmpeg falló con código:', code);
-          console.error('❌ Stderr:', stderr);
-          reject(new Error(`FFmpeg failed with code ${code}: ${stderr}`));
-        }
-      });
-
-      process.on('error', (err) => {
-        console.error('❌ Error ejecutando FFmpeg:', err);
-        reject(err);
-      });
-    });
-
-    // Verificar que el archivo se creó
-    const outputExists = await fs.stat(outputPath).catch(() => null);
-    if (!outputExists) {
-      throw new Error('Archivo de salida no encontrado');
-    }
-
-    // Leer el archivo de salida
-    const outputData = await fs.readFile(outputPath);
-    console.log('✅ Video renderizado, tamaño:', outputData.length, 'bytes');
-
-    // Limpiar archivos temporales
-    await fs.rm(tempDir, { recursive: true, force: true });
-    console.log('🧹 Archivos temporales limpiados');
-
-    // Configurar headers de respuesta
-    res.setHeader('Content-Type', `video/${format}`);
-    res.setHeader('Content-Length', outputData.length);
-    res.setHeader('Content-Disposition', `inline; filename="rendered_video.${format}"`);
-
-    // Enviar el video
-    res.status(200).send(outputData);
-
-    console.log('🎉 Video enviado exitosamente desde GitLab');
+    // (removed) Unreachable hybrid block with undefined identifiers.
 
   } catch (error) {
     console.error('❌ Error en renderizado:', error);

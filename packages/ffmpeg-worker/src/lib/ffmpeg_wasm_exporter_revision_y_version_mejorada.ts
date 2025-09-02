@@ -1,7 +1,9 @@
-import { FFmpeg } from '@ffmpeg/ffmpeg';                    // ✅ Resuelto
-import type { Timeline } from '@framefuse/core';             // ✅ Resuelto
-import type { ExportOptions, VideoExporter } from '@framefuse/core'; // ✅ Resuelto
-import type { FfmpegWorkerOptions } from '../types';        // ✅ Resuelto
+import type { FFmpeg } from '@ffmpeg/ffmpeg'
+// If needed later:
+// import { createFFmpeg } from '@ffmpeg/ffmpeg'
+import type { Timeline } from '@framefuse/core';             
+import type { ExportOptions, VideoExporter } from '@framefuse/core'; 
+import type { FfmpegWorkerOptions } from '../types';        
 
 /**
  * Mejoras clave frente a tu versión:

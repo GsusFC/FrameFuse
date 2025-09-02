@@ -20,6 +20,9 @@ module.exports = [
         Response: 'readonly'
       }
     },
+module.exports = [
+  {
+    languageOptions: { /* existing parserOptions, ecmaVersion, sourceType, etc. */ },
     rules: {
       // Reglas básicas de JavaScript
       'no-unused-vars': ['error', {
@@ -42,6 +45,33 @@ module.exports = [
       'curly': ['error', 'all'],
       'semi': ['error', 'always']
     }
+  },
+  // TypeScript override
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    languageOptions: {
+      parser: require('@typescript-eslint/parser'),
+      ecmaVersion: 2022,
+      sourceType: 'module'
+    },
+    plugins: {
+      '@typescript-eslint': require('@typescript-eslint/eslint-plugin')
+    },
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'warn',
+      // mirror base rules safely for TS
+      'no-duplicate-imports': 'error',
+      'prefer-const': 'error',
+      'no-var': 'error',
+      'object-shorthand': 'error',
+      'prefer-template': 'error',
+      'eqeqeq': ['error', 'always'],
+      'curly': ['error', 'all'],
+      'semi': ['error', 'always']
+    }
+  },
+]
   },
 
   // Configuración para archivos de configuración
@@ -105,7 +135,9 @@ module.exports = [
       '*.min.js',
       '*.bundle.js',
       '**/*.d.ts',
-      'test-quality-gates.ts' // Excluir archivo de prueba
+      '*.min.js',
+      '*.bundle.js',
+      '**/*.d.ts',
     ]
   }
 ];

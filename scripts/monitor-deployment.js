@@ -26,10 +26,24 @@ const PROJECT_CONFIG = {
 // Función para verificar conectividad
 async function checkUrl(url, name) {
   return new Promise((resolve) => {
+    let settled = false;
+    const finalize = (payload) => { if (!settled) { settled = true; resolve(payload); } };
+
     const req = https.request(url, { method: 'HEAD' }, (res) => {
       const status = res.statusCode;
+      if (status === 405) { // Method Not Allowed → retry with GET
+        const r2 = https.request(url, { method: 'GET' }, (res2) => {
+          const s2 = res2.statusCode;
+          const ok2 = s2 >= 200 && s2 < 400;
+          finalize({ name, url, status: s2, accessible: ok2, emoji: ok2 ? '✅' : '❌' });
+        });
+        r2.on('error', () => finalize({ name, url, status: null, accessible: false, emoji: '❌' }));
+        r2.setTimeout(5000, () => { r2.destroy(); finalize({ name, url, status: null, accessible: false, emoji: '⏳' }); });
+        r2.end();
+        return;
+      }
       const isOk = status >= 200 && status < 400;
-      resolve({
+      finalize({
         name,
         url,
         status,
@@ -39,7 +53,7 @@ async function checkUrl(url, name) {
     });
 
     req.on('error', () => {
-      resolve({
+      finalize({
         name,
         url,
         status: null,
@@ -50,7 +64,7 @@ async function checkUrl(url, name) {
 
     req.setTimeout(5000, () => {
       req.destroy();
-      resolve({
+      finalize({
         name,
         url,
         status: null,
@@ -58,6 +72,7 @@ async function checkUrl(url, name) {
         emoji: '⏳'
       });
     });
+
     req.end();
   });
 }

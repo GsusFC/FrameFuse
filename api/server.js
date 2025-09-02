@@ -68,10 +68,18 @@ async function renderWithPreviewAlgorithm(processedClips, format, width, height,
   const hasTransitions = processedClips.some(clip => clip.transitionAfter && clip.transitionAfter.durationMs > 0);
 
   if (!hasTransitions) {
-    console.log('📊 Sin transiciones, usando método concat simple');
-    return await renderWithSimpleConcat(processedClips, format, width, height, fps, tempDir, totalDurationSec, outputPath, { debug, crf, preset });
+    console.log('📊 Sin transiciones, usando pipeline por segmentos');
+    return await renderWithSegmentPipeline(
+      processedClips,
+      format,
+      width,
+      height,
+      fps,
+      tempDir,
+      outputPath,
+      { debug, crf, preset }
+    );
   }
-
   const strat = (strategy || 'segments').toLowerCase();
   console.log(`📊 Con transiciones, estrategia='${strat}'`);
   if (strat === 'xfade') {
@@ -410,6 +418,10 @@ async function executeFFmpeg(ffmpegArgs, outputPath) {
       stderr += data.toString();
     });
 
+    ffmpeg.on('error', (err) => {
+      reject(err);
+    });
+
     ffmpeg.on('close', (code) => {
       if (code === 0) {
         console.log('✅ Renderizado completado exitosamente');
@@ -420,6 +432,7 @@ async function executeFFmpeg(ffmpegArgs, outputPath) {
       }
     });
   });
+}
 }
 
 // Resolver binario de FFmpeg
@@ -461,8 +474,7 @@ app.post('/api/render', async (req, res) => {
     console.log('🚀 Iniciando renderizado...');
     
     // Parsear configuración con la estructura real del frontend
-    console.log('📋 req.body:', req.body);
-
+   console.log('📋 Petición recibida (campos):', Object.keys(req.body || {}));
     // El frontend envía los datos directamente en req.body, no como JSON string
     const { project, format = 'mp4', width = 1280, height = 720, fps = 30 } = req.body;
     const debug = Boolean((req.query && (req.query.debug === '1' || req.query.debug === 'true')) || req.body?.debug);
@@ -470,14 +482,27 @@ app.post('/api/render', async (req, res) => {
     const crf = String(req.body?.crf || process.env.FFZ_CRF || '30');
     const preset = String(req.body?.preset || process.env.FFZ_PRESET || 'veryfast');
 
-    if (!project || !project.clips) {
+    if (!project || !Array.isArray(project.clips)) {
       throw new Error('Campo project.clips no encontrado en la petición');
+    }
+    if (project.clips.length === 0) {
+      throw new Error('No se recibieron clips');
+    }
+    const allowedFormats = new Set(['mp4', 'webm', 'gif']);
+    if (!allowedFormats.has(String(format).toLowerCase())) {
+      throw new Error(`Formato no soportado: ${format}`);
+    }
+    if (!Number.isFinite(fps) || fps < 1 || fps > 60) {
+      throw new Error(`FPS inválido: ${fps}`);
+    }
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      throw new Error(`Resolución inválida: ${width}x${height}`);
     }
 
     const clips = project.clips;
-    
+
     console.log(`📊 Configuración: ${clips.length} clips, ${format}, ${width}x${height}, ${fps}fps, estrategia=${strategy}, crf=${crf}, preset=${preset}, debug=${debug}`);
-    
+
     // Crear directorio temporal
     tempDir = await fs.mkdtemp(path.join(tmpdir(), 'framefuse-'));
     console.log('📁 Directorio temporal:', tempDir);
@@ -514,6 +539,9 @@ app.post('/api/render', async (req, res) => {
       });
       
       console.log(`✅ Clip ${i} procesado: ${clip.durationMs}ms`);
+    }
+    if (processedClips.length === 0) {
+      throw new Error('No se pudieron procesar imágenes válidas');
     }
     
     // 🎯 CALCULAR DURACIÓN CORRECTA PARA XFADE

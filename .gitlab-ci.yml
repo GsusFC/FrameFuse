@@ -2,69 +2,28 @@
 # Despliegue automatizado con Docker y FFmpeg + MCP
 # Correcciones críticas aplicadas - Pipeline optimizado
 
-# Configuración de inputs para mayor flexibilidad
-spec:
-  inputs:
-    environment:
-      description: "Entorno de despliegue"
-      type: string
-      default: "production"
-      options: ["development", "staging", "production"]
-
-    node_version:
-      description: "Versión de Node.js"
-      type: string
-      default: "18"
-      options: ["16", "18", "20"]
-
-    enable_mcp:
-      description: "Habilitar GitLab Duo MCP"
-      type: boolean
-      default: true
-
-    docker_build_args:
-      description: "Argumentos adicionales para Docker build"
-      type: string
-      default: ""
-
-    registry_prefix:
-      description: "Prefijo para el registry (vacío para usar default)"
-      type: string
-      default: ""
-
-    health_check_enabled:
-      description: "Habilitar health checks automáticos"
-      type: boolean
-      default: true
-
+# Configuración de stages
 stages:
   - build
   - test
   - deploy
 
+# Variables por defecto - pueden ser sobrescritas por variables de CI/CD
 variables:
-  # Configuración Docker
-  DOCKER_HOST: tcp://docker:2376
-  DOCKER_TLS_CERTDIR: "/certs"
-  DOCKER_DRIVER: overlay2
+  NODE_VERSION: "16"  # Versión de Node.js por defecto
+  ENVIRONMENT: "staging"  # Entorno por defecto
+  ENABLE_MCP: "false"  # MCP deshabilitado por defecto
+  REGISTRY_PREFIX: ""  # Prefijo de registry opcional
+  HEALTH_CHECK_ENABLED: "true"  # Health checks habilitados por defecto
 
-  # Variables dinámicas basadas en inputs
-  NODE_VERSION: $[[ inputs.node_version ]]
-  ENVIRONMENT: $[[ inputs.environment ]]
-  ENABLE_MCP: $[[ inputs.enable_mcp ]]
-  REGISTRY_PREFIX: $[[ inputs.registry_prefix ]]
-  HEALTH_CHECK_ENABLED: $[[ inputs.health_check_enabled ]]
-
-# 🏗️ BUILD: Construir imagen Docker con configuración dinámica
+# 🏗️ BUILD: Construcción de imagen Docker con configuración dinámica
 build:
   stage: build
   image: docker:24.0.5
   services:
     - docker:24.0.5-dind
   before_script:
-    - docker info
-    - echo "🐳 Iniciando construcción de imagen Docker..."
-    - echo "📋 Configuración del build:"
+    - echo "🏗️ Configuración de build:"
     - echo "   • Entorno: $ENVIRONMENT"
     - echo "   • Node.js: $NODE_VERSION"
     - echo "   • MCP habilitado: $ENABLE_MCP"
@@ -123,16 +82,14 @@ build:
     - docker push $FULL_REGISTRY_IMAGE:$IMAGE_TAG
     - docker push $FULL_REGISTRY_IMAGE:$LATEST_TAG
 
-    # Crear archivo con información del build
+    # Crear archivo con información del build (formato dotenv válido)
     - |
-      echo "BUILD_INFO<<EOF" >> build.env
       echo "IMAGE_TAG=$IMAGE_TAG" >> build.env
       echo "LATEST_TAG=$LATEST_TAG" >> build.env
       echo "REGISTRY_IMAGE=$FULL_REGISTRY_IMAGE" >> build.env
       echo "ENVIRONMENT=$ENVIRONMENT" >> build.env
       echo "NODE_VERSION=$NODE_VERSION" >> build.env
       echo "ENABLE_MCP=$ENABLE_MCP" >> build.env
-      echo "EOF" >> build.env
 
     - echo "✅ Imagen subida exitosamente: $FULL_REGISTRY_IMAGE:$IMAGE_TAG"
 
@@ -202,12 +159,16 @@ code_quality:
     - main
     - develop
     - merge_requests
-  allow_failure: $[[ inputs.environment != "production" ]]
+  rules:
+    - if: '$ENVIRONMENT == "production"'
+      allow_failure: false
+    - when: on_success
+      allow_failure: true
 
 # 🧪 TEST: Ejecutar tests con configuración dinámica
 test:
   stage: test
-  image: node:$[[ inputs.node_version ]]-alpine
+  image: node:${NODE_VERSION}-alpine
   before_script:
     - apk add --no-cache git curl
     - npm install -g pnpm@8
@@ -301,7 +262,11 @@ test:
     paths:
       - packages/*/coverage/
     expire_in: 1 week
-  allow_failure: $[[ inputs.environment != "production" ]]
+  rules:
+    - if: '$ENVIRONMENT == "production"'
+      allow_failure: false
+    - when: on_success
+      allow_failure: true
 
 # 🚀 DEPLOY: Despliegue inteligente con configuración dinámica
 deploy:
@@ -324,13 +289,19 @@ deploy:
     # Verificar que la imagen existe en el registry
     - |
       echo "🔍 Verificando imagen en registry..."
-      IMAGE_URL="$REGISTRY_IMAGE:$IMAGE_TAG"
-      if curl -f "$IMAGE_URL" &>/dev/null; then
-        echo "✅ Imagen verificada: $IMAGE_URL"
+      IMAGE_REF="$REGISTRY_IMAGE:$IMAGE_TAG"
+      echo "   📦 Verificando: $IMAGE_REF"
+
+      # Autenticarse en el registry
+      docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+      # Verificar imagen usando docker manifest inspect
+      if docker manifest inspect "$IMAGE_REF" &>/dev/null; then
+        echo "✅ Imagen verificada: $IMAGE_REF"
       else
-        echo "⚠️ Imagen no accesible públicamente (normal en registry privado)"
-        echo "   Intentando con autenticación..."
-        # Aquí podrías verificar con credenciales si fuera necesario
+        echo "❌ Error: Imagen no encontrada en registry"
+        echo "   Verifica que el job build se ejecutó correctamente"
+        exit 1
       fi
 
     # Configurar despliegue según entorno
@@ -399,7 +370,7 @@ deploy:
     - echo "📋 Resumen guardado en: deployment-summary.txt"
 
   environment:
-    name: $[[ inputs.environment ]]
+    name: ${ENVIRONMENT}
     url: https://api.framefuse.com
   only:
     - main
