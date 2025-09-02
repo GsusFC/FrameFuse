@@ -33,12 +33,15 @@ function normalizeOrigin(origin: string): string {
 // - FFZ_WEB_APP_ORIGIN, VITE_WEB_APP_ORIGIN, WEB_APP_ORIGIN
 // - FFZ_API_BASE, VITE_API_BASE, API_BASE
 const ENV_WEB_APP_ORIGIN = getEnv('FFZ_WEB_APP_ORIGIN') || getEnv('VITE_WEB_APP_ORIGIN') || getEnv('WEB_APP_ORIGIN')
-const DEFAULT_WEB_APP_ORIGIN = 'https://frame-fuse-web.vercel.app'
+// Origen por defecto de la web (producción)
+// Debe coincidir con el despliegue actual de apps/web
+const DEFAULT_WEB_APP_ORIGIN = 'https://framefuse-rdmlsa0bx-gsus-projects.vercel.app'
 
 export const WEB_APP_ORIGIN = normalizeOrigin(ENV_WEB_APP_ORIGIN || DEFAULT_WEB_APP_ORIGIN)
 
 const ENV_API_BASE = getEnv('FFZ_API_BASE') || getEnv('VITE_API_BASE') || getEnv('API_BASE')
-export const API_BASE = ENV_API_BASE ? ENV_API_BASE.replace(/\/$/, '') : 'https://framefuse-79hosqbj5-gsus-projects.vercel.app/api'
+// Mantener "/api" en el default porque las funciones serverless viven bajo ese prefijo
+export const API_BASE = (ENV_API_BASE ? ENV_API_BASE : 'https://framefuse-rdmlsa0bx-gsus-projects.vercel.app/api').replace(/\/$/, '')
 
 export const getSlideshowUrl = (sessionId?: string) =>
   sessionId ? `${WEB_APP_ORIGIN}?sessionId=${sessionId}` : WEB_APP_ORIGIN

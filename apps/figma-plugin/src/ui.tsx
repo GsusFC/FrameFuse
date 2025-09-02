@@ -337,19 +337,21 @@ function Plugin() {
 
     async function uploadImagesViaAPI(imgs: { name: string; data: number[]; width?: number; height?: number }[]) {
       try {
-        // Calcular tamaño total del payload
-        const totalSize = JSON.stringify({ images: imgs }).length
-        console.log(`📊 Payload size: ${(totalSize / 1024 / 1024).toFixed(2)}MB`)
-        
-        if (totalSize > 6000000) { // ~6MB límite más realista para quality 0.5
-          throw new Error('Payload too large even with compression. Try fewer frames.')
-        }
-        
-        const payload = { images: imgs }
+        // Preferir FFZ comprimido para minimizar payload
+        const frames = imgs.map((img) => ({
+          name: img.name,
+          data: new Uint8Array(img.data),
+          width: img.width ?? 1920,
+          height: img.height ?? 1080
+        }))
+        const ffz = FFZGenerator.generateFFZ(frames)
+        console.log(`📊 FFZ size: ${(ffz.length / 1024 / 1024).toFixed(2)}MB`)
+
+        // Enviar ffzData al backend; el server generará/guardará la sesión
         const res = await fetch(`${API_BASE}/upload-ffz`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ ffzData: Array.from(ffz) })
         })
         if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
         const data = await res.json() as { sessionId: string }

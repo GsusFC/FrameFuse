@@ -54,6 +54,13 @@ export function TimelinePanel() {
           copyTransitionFrom(selectedIds[0]);
         }
         e.preventDefault();
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Eliminar elementos seleccionados
+        const ids = [...selectedIds];
+        if (ids.length) {
+          ids.forEach((id) => removeClip(id));
+          e.preventDefault();
+        }
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -178,9 +185,11 @@ export function TimelinePanel() {
                       </div>
                     </div>
                     <button
+                      type="button"
                       aria-label="Eliminar clip"
-                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-[#ef4444] text-white text-xs"
-                      onClick={() => removeClip(c.id)}
+                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-[#ef4444] text-white text-xs z-30"
+                      onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                      onClick={(e) => { e.stopPropagation(); removeClip(c.id); }}
                     >
                       ×
                     </button>
