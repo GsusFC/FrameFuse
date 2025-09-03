@@ -170,8 +170,6 @@ export default async function handler(req: any, res: any) {
           duration: clip.durationMs / 1000
         })
       }
-        })
-      }
     }
 
     // Crear lista de archivos para concat
@@ -200,70 +198,55 @@ export default async function handler(req: any, res: any) {
     const outputPath = path.join(tempDir, `output.${format}`)
 
     // Comando FFmpeg directo
-    const ffmpegArgs = [
-      '-y', // Sobrescribir archivos
+    const ffmpegArgs: string[] = [
+      '-y',
       '-f', 'concat',
       '-safe', '0',
       '-i', concatFilePath,
+      '-r', String(parsedFps),
       '-c:v', format === 'webm' ? 'libvpx-vp9' : 'libx264',
-     await new Promise<void>((resolve, reject) => {
-       const process = spawn(FFMPEG_PATH, ffmpegArgs, {
-         cwd: tempDir,
-         stdio: ['pipe', 'pipe', 'pipe']
-       })
+      ...(format === 'mp4' ? ['-pix_fmt', 'yuv420p'] : []),
+      outputPath,
+    ]
 
-       let stderr = ''
-       let processKilled = false
+    await new Promise<void>((resolve, reject) => {
+      const ff = spawn(FFMPEG_PATH, ffmpegArgs, {
+        cwd: tempDir,
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
 
-       process.stderr?.on('data', (data) => {
-         stderr += data.toString()
-       })
+      let stderr = ''
+      let processKilled = false
 
-       // Configurar timeout
-       const timeout = setTimeout(() => {
-         console.error('⏰ FFmpeg timeout alcanzado, terminando proceso')
-         processKilled = true
-         process.kill('SIGKILL')
-         reject(new Error(`FFmpeg timeout after ${FFMPEG_TIMEOUT_MS}ms: ${stderr}`))
-       }, FFMPEG_TIMEOUT_MS)
+      ff.stderr?.on('data', (data: Buffer) => {
+        stderr += data.toString()
+      })
 
-       process.on('close', (code) => {
-         clearTimeout(timeout)
-         if (processKilled) return
-         if (code === 0) {
-           console.log('✅ FFmpeg finalizado correctamente')
-           resolve()
-         } else {
-           console.error('❌ FFmpeg falló con código:', code)
-           console.error('❌ Stderr:', stderr)
-           reject(new Error(`FFmpeg failed with code ${code}: ${stderr}`))
-         }
-       })
+      const timeout = setTimeout(() => {
+        console.error('⏰ FFmpeg timeout alcanzado, terminando proceso')
+        processKilled = true
+        ff.kill('SIGKILL')
+        reject(new Error(`FFmpeg timeout after ${FFMPEG_TIMEOUT_MS}ms: ${stderr}`))
+      }, FFMPEG_TIMEOUT_MS)
 
-       process.on('error', (err) => {
-         clearTimeout(timeout)
-         if (!processKilled) {
-           process.kill('SIGKILL')
-         }
-         console.error('❌ Error ejecutando FFmpeg:', err)
-         reject(err)
-       })
-     })
-         if (!processKilled) {
-           process.kill('SIGKILL')
-         }
-         console.error('❌ Error ejecutando FFmpeg:', err)
-         reject(err)
-       })
-     })
+      ff.on('close', (code: number | null) => {
+        clearTimeout(timeout)
+        if (processKilled) return
+        if (code === 0) {
+          console.log('✅ FFmpeg finalizado correctamente')
+          resolve()
+        } else {
           console.error('❌ FFmpeg falló con código:', code)
           console.error('❌ Stderr:', stderr)
           reject(new Error(`FFmpeg failed with code ${code}: ${stderr}`))
         }
       })
 
-      process.on('error', (err) => {
+      ff.on('error', (err: Error) => {
         clearTimeout(timeout)
+        if (!processKilled) {
+          ff.kill('SIGKILL')
+        }
         console.error('❌ Error ejecutando FFmpeg:', err)
         reject(err)
       })
