@@ -222,6 +222,20 @@ export default async function handler(req: any, res: any) {
 
     const outputPath = path.join(tempDir, `output.${format}`)
 
+    // Verificar que FFmpeg sea ejecutable antes de invocar
+    {
+      const probe = spawnSync(FFMPEG_PATH, ['-version'], { encoding: 'utf8' })
+      if (probe.status !== 0) {
+        console.error('❌ FFmpeg no ejecutable o no encontrado:', FFMPEG_PATH, probe.stderr || probe.stdout)
+        await removeDirectory(tempDir)
+        return sendJSON(res, 500, {
+          success: false,
+          error: `FFmpeg not executable or missing at path: ${FFMPEG_PATH}`,
+          hint: 'Define FFMPEG_PATH o incluye @ffmpeg-installer/ffmpeg'
+        })
+      }
+    }
+
     // Comando FFmpeg directo
     const ffmpegArgs: string[] = [
       '-y',
