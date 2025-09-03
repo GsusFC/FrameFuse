@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client"],
+    "jsx": "react-jsx",
+    "moduleResolution": "Bundler"
+  },
+  "include": [
+    "apps/web/src/**/*",
+    "apps/figma-plugin/src/**/*",
+    "packages/ui-kit/src/**/*"
+  ]
+}
+
