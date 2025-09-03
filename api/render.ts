@@ -4,8 +4,9 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { tmpdir } from 'os';
 
-// Resolver binario de FFmpeg de forma robusta (ENV -> @ffmpeg-installer -> sistema)
-let FFMPEG_PATH: string = process.env.FFMPEG_PATH || ''
+// Resolver binario de FFmpeg de forma robusta, priorizando el instalador empaquetado
+// Orden: @ffmpeg-installer/ffmpeg -> FFMPEG_PATH (si no es ffmpeg-static) -> /usr/bin/ffmpeg
+let FFMPEG_PATH: string = ''
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const inst = require('@ffmpeg-installer/ffmpeg')
@@ -13,20 +14,16 @@ try {
     FFMPEG_PATH = inst.path
   }
 } catch {
-  // ignore, fallback to system default
+  // ignore, intentaremos con env o sistema
 }
-// Si la variable de entorno apunta a ffmpeg-static (no deseado en Vercel), intentar reemplazar por el instalador
-if (FFMPEG_PATH && /ffmpeg-static/i.test(FFMPEG_PATH)) {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const inst2 = require('@ffmpeg-installer/ffmpeg')
-    if (inst2 && inst2.path) {
-      console.warn('⚠️ Ignorando FFMPEG_PATH (ffmpeg-static) y usando @ffmpeg-installer/ffmpeg')
-      FFMPEG_PATH = inst2.path
-    }
-  } catch {}
+if (!FFMPEG_PATH) {
+  const envPath = process.env.FFMPEG_PATH || ''
+  if (envPath && !/ffmpeg-static/i.test(envPath)) {
+    FFMPEG_PATH = envPath
+  } else if (envPath && /ffmpeg-static/i.test(envPath)) {
+    console.warn('⚠️ Ignorando FFMPEG_PATH (ffmpeg-static) y usando fallback')
+  }
 }
-
 if (!FFMPEG_PATH) {
   FFMPEG_PATH = '/usr/bin/ffmpeg'
 }
