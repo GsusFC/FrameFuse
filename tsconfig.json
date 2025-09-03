@@ -21,7 +21,7 @@
       "@/*": ["./src/*"],
       "@framefuse/*": ["./packages/*/src"]
     },
-    "types": ["node", "vite/client"],
+    "types": ["node"],
     "typeRoots": ["./node_modules/@types"]
   },
   "include": [

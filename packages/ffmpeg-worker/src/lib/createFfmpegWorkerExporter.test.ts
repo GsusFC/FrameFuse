@@ -139,7 +139,6 @@ describe('createFfmpegWorkerExporter', () => {
       await expect(exporter.export(timeline, mockSettings))
         .rejects
         .toThrow(/too large|Image too large/);
-          .toThrow(/too large|Image too large/);
     });
 
     it('should reject total memory usage over 200MB', async () => {
@@ -252,5 +251,4 @@ describe('createFfmpegWorkerExporter', () => {
     });
   });
 });
-
 

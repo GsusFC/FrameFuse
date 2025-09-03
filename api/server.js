@@ -433,7 +433,6 @@ async function executeFFmpeg(ffmpegArgs, outputPath) {
     });
   });
 }
-}
 
 // Resolver binario de FFmpeg
 let FFMPEG_CMD = process.env.FFMPEG_PATH || 'ffmpeg';

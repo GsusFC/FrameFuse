@@ -1,8 +1,8 @@
-// 🔍 ESLint Configuration for FrameFuse
-// Configuración simplificada y compatible con ESLint v9
+// 🔍 ESLint Configuration for FrameFuse (Flat Config)
+// Compatible con ESLint v9 y proyectos TS/JS monorepo
 
 module.exports = [
-  // Configuración base recomendada
+  // Base JS rules
   {
     languageOptions: {
       ecmaVersion: 2022,
@@ -17,18 +17,11 @@ module.exports = [
         navigator: 'readonly',
         fetch: 'readonly',
         Request: 'readonly',
-        Response: 'readonly'
-      }
+        Response: 'readonly',
+      },
     },
-module.exports = [
-  {
-    languageOptions: { /* existing parserOptions, ecmaVersion, sourceType, etc. */ },
     rules: {
-      // Reglas básicas de JavaScript
-      'no-unused-vars': ['error', {
-        argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_'
-      }],
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       'no-console': ['warn', { allow: ['warn', 'error', 'info', 'debug'] }],
       'no-debugger': 'error',
       'no-duplicate-imports': 'error',
@@ -36,66 +29,55 @@ module.exports = [
       'no-var': 'error',
       'object-shorthand': 'error',
       'prefer-template': 'error',
-
-      // Reglas de seguridad
       'no-eval': 'error',
-
-      // Mejores prácticas
-      'eqeqeq': ['error', 'always'],
-      'curly': ['error', 'all'],
-      'semi': ['error', 'always']
-    }
+      eqeqeq: ['error', 'always'],
+      curly: ['error', 'all'],
+      semi: ['error', 'always'],
+    },
   },
-  // TypeScript override
+
+  // TypeScript rules
   {
     files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parser: require('@typescript-eslint/parser'),
       ecmaVersion: 2022,
-      sourceType: 'module'
+      sourceType: 'module',
     },
     plugins: {
-      '@typescript-eslint': require('@typescript-eslint/eslint-plugin')
+      '@typescript-eslint': require('@typescript-eslint/eslint-plugin'),
     },
     rules: {
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
-      // mirror base rules safely for TS
       'no-duplicate-imports': 'error',
       'prefer-const': 'error',
       'no-var': 'error',
       'object-shorthand': 'error',
       'prefer-template': 'error',
-      'eqeqeq': ['error', 'always'],
-      'curly': ['error', 'all'],
-      'semi': ['error', 'always']
-    }
-  },
-]
+      eqeqeq: ['error', 'always'],
+      curly: ['error', 'all'],
+      semi: ['error', 'always'],
+    },
   },
 
-  // Configuración para archivos de configuración
+  // Config files
   {
     files: [
       '*.config.js',
       '*.config.ts',
       'vite.config.*',
       'vitest.config.*',
-      'scripts/**/*.js'
+      'scripts/**/*.js',
     ],
     rules: {
-      'no-console': 'off'
-    }
+      'no-console': 'off',
+    },
   },
 
-  // Configuración para tests
+  // Tests
   {
-    files: [
-      '**/*.test.ts',
-      '**/*.test.tsx',
-      '**/*.spec.ts',
-      '**/*.spec.tsx'
-    ],
+    files: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx'],
     languageOptions: {
       globals: {
         describe: 'readonly',
@@ -104,26 +86,24 @@ module.exports = [
         beforeEach: 'readonly',
         afterEach: 'readonly',
         jest: 'readonly',
-        test: 'readonly'
-      }
+        test: 'readonly',
+        vi: 'readonly',
+      },
     },
     rules: {
-      'no-console': 'off'
-    }
+      'no-console': 'off',
+    },
   },
 
-  // Configuración para API
+  // API backend
   {
-    files: [
-      'api/**/*.ts',
-      'api/**/*.js'
-    ],
+    files: ['api/**/*.ts', 'api/**/*.js'],
     rules: {
-      'no-console': 'off' // Permitir logs en backend
-    }
+      'no-console': 'off',
+    },
   },
 
-  // Exclusiones
+  // Ignores
   {
     ignores: [
       'node_modules/**',
@@ -135,9 +115,6 @@ module.exports = [
       '*.min.js',
       '*.bundle.js',
       '**/*.d.ts',
-      '*.min.js',
-      '*.bundle.js',
-      '**/*.d.ts',
-    ]
-  }
+    ],
+  },
 ];
