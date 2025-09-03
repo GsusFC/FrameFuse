@@ -1,8 +1,6 @@
 {
-  "build": {
-    "env": {
-      "NODE_VERSION": "18"
-    }
+  "env": {
+    "NODE_VERSION": "18"
   },
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "mkdir -p public && echo 'FrameFuse API' > public/index.html",
