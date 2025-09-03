@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import sharp from 'sharp';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -17,6 +17,19 @@ try {
 }
 if (!FFMPEG_PATH) {
   FFMPEG_PATH = '/usr/bin/ffmpeg'
+}
+
+// Chequeo de arranque: loguear versión de FFmpeg en frío
+try {
+  const ver = spawnSync(FFMPEG_PATH, ['-version'], { encoding: 'utf8' })
+  if (ver.status === 0) {
+    const firstLine = (ver.stdout || '').split('\n')[0]
+    console.log('🧪 FFmpeg check OK:', firstLine)
+  } else {
+    console.error('🧪 FFmpeg check FAILED:', ver.stderr || `status=${ver.status}`)
+  }
+} catch (e) {
+  console.error('🧪 FFmpeg check ERROR:', e)
 }
 
 // Type definition for processed clips
