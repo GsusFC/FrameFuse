@@ -25,12 +25,12 @@
     "sharp": "^0.33.4"
   },
   "devDependencies": {
-    "@eslint/js": "^9.34.0",
+    "@eslint/js": "^8.57.1",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@types/node": "^24.3.0",
-    "@typescript-eslint/eslint-plugin": "^7.8.0",
-    "@typescript-eslint/parser": "^7.8.0",
-    "eslint": "^9.7.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.32.0",
     "js-yaml": "^4.1.0",
@@ -41,7 +41,9 @@
   },
   "pnpm": {
     "overrides": {
-      "ffmpeg-static": "npm:@ffmpeg-installer/ffmpeg@1.1.0"
+      "ffmpeg-static": "npm:@ffmpeg-installer/ffmpeg@1.1.0",
+      "eslint": "^8.57.0",
+      "@eslint/js": "^8.57.0"
     }
   }
 }
