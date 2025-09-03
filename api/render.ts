@@ -15,6 +15,18 @@ try {
 } catch {
   // ignore, fallback to system default
 }
+// Si la variable de entorno apunta a ffmpeg-static (no deseado en Vercel), intentar reemplazar por el instalador
+if (FFMPEG_PATH && /ffmpeg-static/i.test(FFMPEG_PATH)) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const inst2 = require('@ffmpeg-installer/ffmpeg')
+    if (inst2 && inst2.path) {
+      console.warn('⚠️ Ignorando FFMPEG_PATH (ffmpeg-static) y usando @ffmpeg-installer/ffmpeg')
+      FFMPEG_PATH = inst2.path
+    }
+  } catch {}
+}
+
 if (!FFMPEG_PATH) {
   FFMPEG_PATH = '/usr/bin/ffmpeg'
 }
@@ -224,15 +236,35 @@ export default async function handler(req: any, res: any) {
 
     // Verificar que FFmpeg sea ejecutable antes de invocar
     {
-      const probe = spawnSync(FFMPEG_PATH, ['-version'], { encoding: 'utf8' })
+      let probe = spawnSync(FFMPEG_PATH, ['-version'], { encoding: 'utf8' })
       if (probe.status !== 0) {
-        console.error('❌ FFmpeg no ejecutable o no encontrado:', FFMPEG_PATH, probe.stderr || probe.stdout)
-        await removeDirectory(tempDir)
-        return sendJSON(res, 500, {
-          success: false,
-          error: `FFmpeg not executable or missing at path: ${FFMPEG_PATH}`,
-          hint: 'Define FFMPEG_PATH o incluye @ffmpeg-installer/ffmpeg'
-        })
+        console.warn('⚠️ FFmpeg probe falló en path actual, intentando fallback instalador:', FFMPEG_PATH)
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const inst3 = require('@ffmpeg-installer/ffmpeg')
+          if (inst3 && inst3.path && inst3.path !== FFMPEG_PATH) {
+            const altPath = inst3.path
+            const probe2 = spawnSync(altPath, ['-version'], { encoding: 'utf8' })
+            if (probe2.status === 0) {
+              console.log('✅ FFmpeg fallback OK:', (probe2.stdout || '').split('\n')[0])
+              FFMPEG_PATH = altPath
+            } else {
+              console.error('❌ FFmpeg fallback también falló:', altPath, probe2.stderr || probe2.stdout)
+            }
+          }
+        } catch {}
+
+        // Re-probar con el path (posiblemente actualizado)
+        probe = spawnSync(FFMPEG_PATH, ['-version'], { encoding: 'utf8' })
+        if (probe.status !== 0) {
+          console.error('❌ FFmpeg no ejecutable o no encontrado:', FFMPEG_PATH, probe.stderr || probe.stdout)
+          await removeDirectory(tempDir)
+          return sendJSON(res, 500, {
+            success: false,
+            error: `FFmpeg not executable or missing at path: ${FFMPEG_PATH}`,
+            hint: 'Define FFMPEG_PATH o incluye @ffmpeg-installer/ffmpeg'
+          })
+        }
       }
     }
 
