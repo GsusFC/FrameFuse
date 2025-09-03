@@ -4,9 +4,20 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { tmpdir } from 'os';
 
-// Usar FFmpeg directamente sin ffmpeg-static
-// Usar FFmpeg directamente sin ffmpeg-static
-const FFMPEG_PATH = process.env.FFMPEG_PATH || '/usr/bin/ffmpeg';
+// Resolver binario de FFmpeg de forma robusta (ENV -> @ffmpeg-installer -> sistema)
+let FFMPEG_PATH: string = process.env.FFMPEG_PATH || ''
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const inst = require('@ffmpeg-installer/ffmpeg')
+  if (inst && inst.path) {
+    FFMPEG_PATH = inst.path
+  }
+} catch {
+  // ignore, fallback to system default
+}
+if (!FFMPEG_PATH) {
+  FFMPEG_PATH = '/usr/bin/ffmpeg'
+}
 
 // Type definition for processed clips
 interface ProcessedClip {
@@ -133,6 +144,7 @@ export default async function handler(req: any, res: any) {
       fps: parsedFps,
       resolution: `${parsedWidth}x${parsedHeight}`
     })
+    console.log('🔧 FFmpeg path:', FFMPEG_PATH)
 
     // Procesar clips e imágenes
     const processedClips: ProcessedClip[] = []
