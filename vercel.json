@@ -4,16 +4,6 @@
     "NODE_VERSION": "18"
   },
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "mkdir -p public && echo 'FrameFuse API' > public/index.html",
-  "outputDirectory": "public",
-  "functions": {
-    "api/**/*.{js,ts}": {
-      "runtime": "nodejs18.x",
-      "maxDuration": 300,
-      "memory": 1024,
-      "includeFiles": "node_modules/@ffmpeg-installer/**"
-    }
-  },
   "headers": [
     {
       "source": "/api/(.*)",

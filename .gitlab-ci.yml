@@ -10,11 +10,12 @@ stages:
 
 # Variables por defecto - pueden ser sobrescritas por variables de CI/CD
 variables:
-  NODE_VERSION: "16"  # Versión de Node.js por defecto
+  NODE_VERSION: "18"  # Versión de Node.js por defecto
   ENVIRONMENT: "staging"  # Entorno por defecto
   ENABLE_MCP: "false"  # MCP deshabilitado por defecto
   REGISTRY_PREFIX: ""  # Prefijo de registry opcional
   HEALTH_CHECK_ENABLED: "true"  # Health checks habilitados por defecto
+  NPM_CONFIG_LEGACY_PEER_DEPS: "true"  # Evita ERESOLVE en jobs que accidentalmente usen npm
 
 # 🏗️ BUILD: Construcción de imagen Docker con configuración dinámica
 build:
@@ -171,7 +172,7 @@ test:
   image: node:${NODE_VERSION}-alpine
   before_script:
     - apk add --no-cache git curl
-    - npm install -g pnpm@8
+    - npm install -g pnpm@9
     - pnpm install --frozen-lockfile
     - echo "🧪 Configuración de test:"
     - echo "   • Entorno: $ENVIRONMENT"
@@ -462,6 +463,66 @@ cleanup:
     - develop
   when: manual
   allow_failure: true
+  
+# 🚀 Deploy a Google Cloud Run (contenedor estable para FFmpeg)
+# Requiere variables CI/CD:
+# - GCP_PROJECT_ID: ID de proyecto GCP
+# - GCP_REGION: región (p.ej. us-central1)
+# - GCP_SERVICE: nombre del servicio (p.ej. framefuse-api)
+# - GAR_REPO: nombre del repo de Artifact Registry (p.ej. framefuse)
+# - GCP_SA_KEY: JSON de Service Account con roles: run.admin, artifactregistry.writer, iam.serviceAccountUser
+
+push_to_gar:
+  stage: deploy
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  needs: ["build"]
+  dependencies:
+    - build
+  script:
+    - echo "🔑 Autenticando registries"
+    - echo "$GCP_SA_KEY" > sa.json
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - cat sa.json | docker login -u _json_key --password-stdin "https://$GCP_REGION-docker.pkg.dev"
+
+    - echo "📦 Pull imagen construida: $REGISTRY_IMAGE:$LATEST_TAG"
+    - docker pull "$REGISTRY_IMAGE:$LATEST_TAG"
+
+    - export GAR_IMAGE="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$GAR_REPO/framefuse-api"
+    - echo "🏷️  Retag a GAR: $GAR_IMAGE:$LATEST_TAG"
+    - docker tag "$REGISTRY_IMAGE:$LATEST_TAG" "$GAR_IMAGE:$LATEST_TAG"
+    - docker push "$GAR_IMAGE:$LATEST_TAG"
+
+    - echo "GAR_IMAGE=$GAR_IMAGE" >> gar.env
+    - echo "DEPLOY_TAG=$LATEST_TAG" >> gar.env
+  artifacts:
+    reports:
+      dotenv: gar.env
+    expire_in: 1 hour
+  only:
+    - main
+    - tags
+
+deploy_cloud_run:
+  stage: deploy
+  image: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+  needs: ["push_to_gar"]
+  script:
+    - echo "🔑 Autenticando en GCP"
+    - echo "$GCP_SA_KEY" > sa.json
+    - gcloud auth activate-service-account --key-file=sa.json
+    - gcloud config set project "$GCP_PROJECT_ID"
+    - gcloud config set run/region "$GCP_REGION"
+
+    - echo "🚀 Desplegando $GCP_SERVICE a Cloud Run"
+    - gcloud run deploy "$GCP_SERVICE" --image "$GAR_IMAGE:$DEPLOY_TAG" --platform managed --allow-unauthenticated --cpu 2 --memory 2Gi --timeout 900 --concurrency 1
+
+    - echo "🔎 URL del servicio:"
+    - gcloud run services describe "$GCP_SERVICE" --region "$GCP_REGION" --format='value(status.url)'
+  only:
+    - main
+    - tags
 
 # 📊 REPORT: Reporte inteligente con métricas detalladas
 report:
